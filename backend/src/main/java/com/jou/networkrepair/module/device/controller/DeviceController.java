@@ -3,6 +3,7 @@ package com.jou.networkrepair.module.device.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
+import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;

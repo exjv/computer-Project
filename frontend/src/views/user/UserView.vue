@@ -1,5 +1,35 @@
-<template><CrudPage title="用户管理" url="/users/page" :columns="cols" create-url="/users" /></template>
+<template>
+  <div>
+    <h2>用户管理</h2>
+    <el-form :inline="true" :model="query">
+      <el-form-item label="用户名"><el-input v-model="query.username" placeholder="请输入用户名"/></el-form-item>
+      <el-form-item label="角色"><el-select v-model="query.role" clearable><el-option label="管理员" value="admin"/><el-option label="普通用户" value="user"/><el-option label="维修人员" value="maintainer"/></el-select></el-form-item>
+      <el-form-item label="手机号"><el-input v-model="query.phone"/></el-form-item>
+      <el-button type="primary" @click="load">查询</el-button><el-button @click="reset">重置</el-button>
+    </el-form>
+    <el-button type="primary" @click="openAdd">新增用户</el-button>
+    <el-table :data="list" style="margin-top:12px"><el-table-column prop="username" label="用户名"/><el-table-column prop="realName" label="姓名"/><el-table-column prop="role" label="角色"/><el-table-column prop="phone" label="手机号"/><el-table-column prop="status" label="状态"><template #default="s">{{s.row.status===1?'启用':'禁用'}}</template></el-table-column><el-table-column label="操作" width="320"><template #default="s"><el-button link @click="edit(s.row)">编辑</el-button><el-button link @click="changeStatus(s.row)">{{s.row.status===1?'禁用':'启用'}}</el-button><el-button link @click="resetPwd(s.row)">重置密码</el-button><el-button link type="danger" @click="remove(s.row)">删除</el-button></template></el-table-column></el-table>
+    <el-pagination style="margin-top:12px" background layout="prev, pager, next" :total="total" @current-change="p=>{page.current=p;load()}"/>
+
+    <el-dialog v-model="dialog" :title="form.id?'编辑用户':'新增用户'">
+      <el-form :model="form" label-width="100px"><el-form-item label="用户名"><el-input v-model="form.username" :disabled="!!form.id"/></el-form-item><el-form-item label="姓名"><el-input v-model="form.realName"/></el-form-item><el-form-item label="角色"><el-select v-model="form.role"><el-option label="管理员" value="admin"/><el-option label="普通用户" value="user"/><el-option label="维修人员" value="maintainer"/></el-select></el-form-item><el-form-item label="手机号"><el-input v-model="form.phone"/></el-form-item><el-form-item label="邮箱"><el-input v-model="form.email"/></el-form-item><el-form-item label="状态"><el-switch v-model="form.status" :active-value="1" :inactive-value="0"/></el-form-item><el-form-item v-if="!form.id" label="初始密码"><el-input v-model="form.password"/></el-form-item></el-form>
+      <template #footer><el-button @click="dialog=false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
+    </el-dialog>
+  </div>
+</template>
 <script setup>
-import CrudPage from '../../components/CrudPage.vue'
-const cols=[{prop:'username',label:'用户名'},{prop:'realName',label:'姓名'},{prop:'role',label:'角色'},{prop:'phone',label:'手机号'},{prop:'status',label:'状态'}]
+import { reactive, ref, onMounted } from 'vue'
+import { getPage, postApi, putApi, delApi } from '../../api'
+import { ElMessageBox, ElMessage } from 'element-plus'
+const query=reactive({username:'',role:'',phone:''}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
+const dialog=ref(false),form=reactive({})
+const load=async()=>{const r=await getPage('/users/page',{...query,...page});list.value=r.records;total.value=r.total}
+const reset=()=>{query.username='';query.role='';query.phone='';load()}
+const openAdd=()=>{Object.assign(form,{id:null,username:'',realName:'',role:'user',phone:'',email:'',status:1,password:'123456'});dialog.value=true}
+const edit=(row)=>{Object.assign(form,{...row,password:''});dialog.value=true}
+const save=async()=>{if(form.id) await putApi(`/users/${form.id}`,form); else await postApi('/users',form);ElMessage.success('保存成功');dialog.value=false;load()}
+const remove=async(row)=>{await ElMessageBox.confirm('确认删除该用户吗？','删除确认');await delApi(`/users/${row.id}`);ElMessage.success('删除成功');load()}
+const resetPwd=async(row)=>{await putApi(`/users/${row.id}/reset-password`,{});ElMessage.success('密码已重置为123456')}
+const changeStatus=async(row)=>{await putApi(`/users/${row.id}/status`,{status:row.status===1?0:1});ElMessage.success('状态更新成功');load()}
+onMounted(load)
 </script>

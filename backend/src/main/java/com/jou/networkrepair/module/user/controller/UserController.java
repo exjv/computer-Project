@@ -3,6 +3,7 @@ package com.jou.networkrepair.module.user.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
+import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class UserController {
     }
 
     @PostMapping
+    @Loggable(module = "通用", operationType = "新增", operationDesc = "新增数据")
     public ApiResult<Void> add(@RequestBody SysUser user) {
         user.setPassword(passwordEncoder.encode(user.getPassword() == null ? "123456" : user.getPassword()));
         user.setCreateTime(LocalDateTime.now()); user.setUpdateTime(LocalDateTime.now());
@@ -43,6 +45,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
+    @Loggable(module = "通用", operationType = "修改", operationDesc = "修改数据")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody SysUser req) {
         req.setId(id); req.setUpdateTime(LocalDateTime.now()); req.setPassword(null);
         userMapper.updateById(req);
@@ -50,6 +53,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
+    @Loggable(module = "通用", operationType = "删除", operationDesc = "删除数据")
     public ApiResult<Void> delete(@PathVariable Long id) { userMapper.deleteById(id); return ApiResult.success("删除成功", null); }
 
     @PutMapping("/{id}/reset-password")

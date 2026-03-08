@@ -33,8 +33,7 @@ public class AuthController {
     public ApiResult<LoginVO> login(@RequestBody @Validated LoginDTO dto, HttpServletRequest request) {
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, dto.getUsername()));
         String status = "SUCCESS";
-        boolean pwdOk = user != null && (passwordEncoder.matches(dto.getPassword(), user.getPassword()) || dto.getPassword().equals(user.getPassword()));
-        if (!pwdOk) {
+        if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
             status = "FAIL";
             saveLoginLog(null, dto.getUsername(), status, request.getRemoteAddr());
             throw new BusinessException("用户名或密码错误");
@@ -58,7 +57,7 @@ public class AuthController {
     public ApiResult<Void> updatePassword(@RequestBody Map<String, String> body, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         SysUser user = userMapper.selectById(userId);
-        if (!(passwordEncoder.matches(body.get("oldPassword"), user.getPassword()) || body.get("oldPassword").equals(user.getPassword()))) throw new BusinessException("旧密码错误");
+        if (!passwordEncoder.matches(body.get("oldPassword"), user.getPassword())) throw new BusinessException("旧密码错误");
         user.setPassword(passwordEncoder.encode(body.get("newPassword")));
         userMapper.updateById(user);
         return ApiResult.success("修改成功", null);

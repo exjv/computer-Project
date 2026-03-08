@@ -19,8 +19,10 @@ public class NoticeController {
     private final NoticeMapper noticeMapper;
 
     @GetMapping("/page")
-    public ApiResult<Page<Notice>> page(@RequestParam Long current, @RequestParam Long size) {
-        return ApiResult.success(noticeMapper.selectPage(new Page<>(current, size), new LambdaQueryWrapper<Notice>().orderByDesc(Notice::getId)));
+    public ApiResult<Page<Notice>> page(@RequestParam Long current, @RequestParam Long size,
+                                        @RequestParam(required = false) String title) {
+        return ApiResult.success(noticeMapper.selectPage(new Page<>(current, size),
+                new LambdaQueryWrapper<Notice>().like(title != null && !title.isEmpty(), Notice::getTitle, title).orderByDesc(Notice::getId)));
     }
 
     @GetMapping("/{id}")

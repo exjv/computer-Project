@@ -94,11 +94,11 @@ CREATE TABLE login_log (
 );
 
 INSERT INTO sys_user VALUES
-(1,'admin','123456','系统管理员','13800000001','admin@campus.edu','admin',1,NOW(),NOW()),
-(2,'user1','123456','张三','13800000002','user1@campus.edu','user',1,NOW(),NOW()),
-(3,'user2','123456','李四','13800000003','user2@campus.edu','user',1,NOW(),NOW()),
-(4,'maint1','123456','王工','13800000004','m1@campus.edu','maintainer',1,NOW(),NOW()),
-(5,'maint2','123456','赵工','13800000005','m2@campus.edu','maintainer',1,NOW(),NOW());
+(1,'admin','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','系统管理员','13800000001','admin@campus.edu','admin',1,NOW(),NOW()),
+(2,'user1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','张三','13800000002','user1@campus.edu','user',1,NOW(),NOW()),
+(3,'user2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','李四','13800000003','user2@campus.edu','user',1,NOW(),NOW()),
+(4,'maint1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','王工','13800000004','m1@campus.edu','maintainer',1,NOW(),NOW()),
+(5,'maint2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','赵工','13800000005','m2@campus.edu','maintainer',1,NOW(),NOW());
 
 INSERT INTO network_device VALUES
 (1,'DEV-001','核心交换机A','交换机','H3C S5560','10.0.0.1','00-11-22-33-44-01','信息楼机房','2021-03-12','正常','核心层设备',NOW(),NOW()),

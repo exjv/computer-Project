@@ -3,6 +3,7 @@ package com.jou.networkrepair.module.repair.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
+import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;
@@ -28,19 +29,25 @@ public class RepairOrderController {
     @GetMapping("/page")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
     public ApiResult<Page<RepairOrder>> page(@RequestParam Long current, @RequestParam Long size,
-                                             @RequestParam(required = false) String status) {
+                                             @RequestParam(required = false) String status,
+                                             @RequestParam(required = false) String title) {
         return ApiResult.success(repairOrderMapper.selectPage(new Page<>(current, size),
-                new LambdaQueryWrapper<RepairOrder>().eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status).orderByDesc(RepairOrder::getId)));
+                new LambdaQueryWrapper<RepairOrder>()
+                        .eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status)
+                        .like(title != null && !title.isEmpty(), RepairOrder::getTitle, title)
+                        .orderByDesc(RepairOrder::getId)));
     }
 
     @GetMapping("/my")
-    public ApiResult<Page<RepairOrder>> my(@RequestParam Long current, @RequestParam Long size, HttpServletRequest request) {
+    public ApiResult<Page<RepairOrder>> my(@RequestParam Long current, @RequestParam Long size,
+                                           @RequestParam(required = false) String status,
+                                           HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         String role = (String) request.getAttribute("role");
         LambdaQueryWrapper<RepairOrder> qw = new LambdaQueryWrapper<>();
         if ("user".equals(role)) qw.eq(RepairOrder::getReporterId, userId);
         if ("maintainer".equals(role)) qw.eq(RepairOrder::getAssignMaintainerId, userId);
-        qw.orderByDesc(RepairOrder::getId);
+        qw.eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status).orderByDesc(RepairOrder::getId);
         return ApiResult.success(repairOrderMapper.selectPage(new Page<>(current, size), qw));
     }
 
@@ -66,7 +73,11 @@ public class RepairOrderController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResult<Void> update(@PathVariable Long id, @RequestBody RepairOrder req) { req.setId(id); req.setUpdateTime(LocalDateTime.now()); repairOrderMapper.updateById(req); return ApiResult.success("修改成功", null); }
+    public ApiResult<Void> update(@PathVariable Long id, @RequestBody RepairOrder req) {
+        req.setId(id); req.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(req);
+        return ApiResult.success("修改成功", null);
+    }
 
     @PutMapping("/{id}/assign")
     @PreAuthorize("hasRole('ADMIN')")
@@ -77,8 +88,12 @@ public class RepairOrderController {
     }
 
     @PutMapping("/{id}/status")
-    public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody RepairOrder req) {
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
+    public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody RepairOrder req, HttpServletRequest request) {
         RepairOrder order = repairOrderMapper.selectById(id);
+        String role = (String) request.getAttribute("role");
+        Long uid = (Long) request.getAttribute("userId");
+        if ("maintainer".equals(role) && !uid.equals(order.getAssignMaintainerId())) throw new BusinessException("仅可处理分配给自己的工单");
         order.setStatus(req.getStatus());
         if ("已完成".equals(req.getStatus())) order.setFinishTime(LocalDateTime.now());
         order.setUpdateTime(LocalDateTime.now()); repairOrderMapper.updateById(order);
