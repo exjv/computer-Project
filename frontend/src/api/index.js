@@ -9,3 +9,5 @@ export const getPage = (url, params) => request.get(url, { params })
 export const postApi = (url, data) => request.post(url, data)
 export const putApi = (url, data) => request.put(url, data)
 export const delApi = url => request.delete(url)
+
+export const autoDispatchApi = () => request.post('/repair-orders/auto-dispatch')

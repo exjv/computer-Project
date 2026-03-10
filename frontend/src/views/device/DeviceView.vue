@@ -5,6 +5,7 @@
       <el-form-item label="设备名称"><el-input v-model="query.deviceName"/></el-form-item>
       <el-form-item label="设备类型"><el-select v-model="query.deviceType" clearable><el-option label="交换机" value="交换机"/><el-option label="路由器" value="路由器"/><el-option label="防火墙" value="防火墙"/><el-option label="无线AP" value="无线AP"/><el-option label="服务器" value="服务器"/></el-select></el-form-item>
       <el-form-item label="运行状态"><el-select v-model="query.status" clearable><el-option label="正常" value="正常"/><el-option label="故障" value="故障"/><el-option label="维修中" value="维修中"/><el-option label="停用" value="停用"/></el-select></el-form-item>
+      <el-form-item label="安装位置"><el-input v-model="query.location"/></el-form-item>
       <el-button type="primary" @click="load">查询</el-button><el-button @click="reset">重置</el-button>
     </el-form>
     <el-button type="primary" v-if="isAdmin" @click="openAdd">新增设备</el-button>
@@ -30,10 +31,10 @@ import { getPage, postApi, putApi, delApi } from '../../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../../stores/user'
 const isAdmin = computed(()=>useUserStore().userInfo.role==='admin')
-const query=reactive({deviceName:'',deviceType:'',status:''}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
+const query=reactive({deviceName:'',deviceType:'',status:'',location:''}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
 const dialog=ref(false),mode=ref('edit'),form=reactive({})
 const load=async()=>{const r=await getPage('/devices/page',{...query,...page});list.value=r.records;total.value=r.total}
-const reset=()=>{query.deviceName='';query.deviceType='';query.status='';load()}
+const reset=()=>{query.deviceName='';query.deviceType='';query.status='';query.location='';load()}
 const openAdd=()=>{mode.value='edit';Object.assign(form,{id:null,deviceCode:'',deviceName:'',deviceType:'交换机',brandModel:'',ipAddress:'',macAddress:'',location:'',purchaseDate:'',status:'正常',remark:''});dialog.value=true}
 const edit=(row)=>{mode.value='edit';Object.assign(form,row);dialog.value=true}
 const detail=(row)=>{mode.value='view';Object.assign(form,row);dialog.value=true}

@@ -1,116 +1,109 @@
 package com.jou.networkrepair.module.repair.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
-import com.jou.networkrepair.common.exception.BusinessException;
-import com.jou.networkrepair.module.device.entity.NetworkDevice;
-import com.jou.networkrepair.module.device.mapper.DeviceMapper;
+import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
-import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
+import com.jou.networkrepair.module.repair.service.RepairOrderService;
+import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/repair-orders")
 @RequiredArgsConstructor
 public class RepairOrderController {
-    private final RepairOrderMapper repairOrderMapper;
-    private final DeviceMapper deviceMapper;
+    private final RepairOrderService repairOrderService;
 
     @GetMapping("/page")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
     public ApiResult<Page<RepairOrder>> page(@RequestParam Long current, @RequestParam Long size,
                                              @RequestParam(required = false) String status,
-                                             @RequestParam(required = false) String title) {
-        return ApiResult.success(repairOrderMapper.selectPage(new Page<>(current, size),
-                new LambdaQueryWrapper<RepairOrder>()
-                        .eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status)
-                        .like(title != null && !title.isEmpty(), RepairOrder::getTitle, title)
-                        .orderByDesc(RepairOrder::getId)));
+                                             @RequestParam(required = false) String title,
+                                             @RequestParam(required = false) String orderNo,
+                                             @RequestParam(required = false) String priority) {
+        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority));
     }
 
     @GetMapping("/my")
     public ApiResult<Page<RepairOrder>> my(@RequestParam Long current, @RequestParam Long size,
                                            @RequestParam(required = false) String status,
+                                           @RequestParam(required = false) String orderNo,
+                                           @RequestParam(required = false) String priority,
                                            HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         String role = (String) request.getAttribute("role");
-        LambdaQueryWrapper<RepairOrder> qw = new LambdaQueryWrapper<>();
-        if ("user".equals(role)) qw.eq(RepairOrder::getReporterId, userId);
-        if ("maintainer".equals(role)) qw.eq(RepairOrder::getAssignMaintainerId, userId);
-        qw.eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status).orderByDesc(RepairOrder::getId);
-        return ApiResult.success(repairOrderMapper.selectPage(new Page<>(current, size), qw));
+        return ApiResult.success(repairOrderService.myPage(current, size, status, orderNo, priority, userId, role));
     }
 
     @GetMapping("/{id}")
     public ApiResult<RepairOrder> get(@PathVariable Long id, HttpServletRequest request) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        String role = (String) request.getAttribute("role"); Long uid = (Long) request.getAttribute("userId");
-        if ("user".equals(role) && !uid.equals(order.getReporterId())) throw new BusinessException("无权查看");
-        if ("maintainer".equals(role) && !uid.equals(order.getAssignMaintainerId())) throw new BusinessException("无权查看");
-        return ApiResult.success(order);
+        return ApiResult.success(repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('USER','ADMIN')")
-    public ApiResult<Void> add(@RequestBody RepairOrder order, HttpServletRequest request) {
-        order.setReporterId((Long) request.getAttribute("userId"));
-        order.setOrderNo("RO" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")));
-        order.setStatus("待处理"); order.setReportTime(LocalDateTime.now()); order.setCreateTime(LocalDateTime.now()); order.setUpdateTime(LocalDateTime.now());
-        repairOrderMapper.insert(order);
-        NetworkDevice device = new NetworkDevice(); device.setId(order.getDeviceId()); device.setStatus("故障"); deviceMapper.updateById(device);
+    @Loggable(module = "工单管理", operationType = "新增", operationDesc = "提交报修工单")
+    public ApiResult<Void> add(@RequestBody @Validated RepairOrderCreateDTO dto, HttpServletRequest request) {
+        repairOrderService.create(dto, (Long) request.getAttribute("userId"));
         return ApiResult.success("提交成功", null);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
+    @Loggable(module = "工单管理", operationType = "修改", operationDesc = "编辑工单")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody RepairOrder req) {
-        req.setId(id); req.setUpdateTime(LocalDateTime.now());
-        repairOrderMapper.updateById(req);
+        repairOrderService.update(id, req);
         return ApiResult.success("修改成功", null);
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Loggable(module = "工单管理", operationType = "删除", operationDesc = "删除工单")
+    public ApiResult<Void> delete(@PathVariable Long id) {
+        repairOrderService.delete(id);
+        return ApiResult.success("删除成功", null);
     }
 
     @PutMapping("/{id}/assign")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResult<Void> assign(@PathVariable Long id, @RequestBody RepairOrder req) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        order.setAssignMaintainerId(req.getAssignMaintainerId()); order.setAssignTime(LocalDateTime.now()); order.setStatus("已分配"); order.setUpdateTime(LocalDateTime.now());
-        repairOrderMapper.updateById(order); return ApiResult.success("分配成功", null);
+    @Loggable(module = "工单管理", operationType = "分配", operationDesc = "分配维修人员")
+    public ApiResult<Void> assign(@PathVariable Long id, @RequestBody @Validated RepairOrderAssignDTO dto) {
+        repairOrderService.assign(id, dto);
+        return ApiResult.success("分配成功", null);
     }
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
-    public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody RepairOrder req, HttpServletRequest request) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        String role = (String) request.getAttribute("role");
-        Long uid = (Long) request.getAttribute("userId");
-        if ("maintainer".equals(role) && !uid.equals(order.getAssignMaintainerId())) throw new BusinessException("仅可处理分配给自己的工单");
-        order.setStatus(req.getStatus());
-        if ("已完成".equals(req.getStatus())) order.setFinishTime(LocalDateTime.now());
-        order.setUpdateTime(LocalDateTime.now()); repairOrderMapper.updateById(order);
+    @Loggable(module = "工单管理", operationType = "状态更新", operationDesc = "更新工单状态")
+    public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody @Validated RepairOrderStatusDTO dto, HttpServletRequest request) {
+        repairOrderService.updateStatus(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("状态更新成功", null);
     }
 
     @GetMapping("/statistics")
     public ApiResult<Map<String, Object>> stats(HttpServletRequest request) {
-        Long uid = (Long) request.getAttribute("userId"); String role = (String) request.getAttribute("role");
-        LambdaQueryWrapper<RepairOrder> base = new LambdaQueryWrapper<>();
-        if ("user".equals(role)) base.eq(RepairOrder::getReporterId, uid);
-        if ("maintainer".equals(role)) base.eq(RepairOrder::getAssignMaintainerId, uid);
-        Map<String, Object> map = new HashMap<>();
-        map.put("total", repairOrderMapper.selectCount(base));
-        map.put("pending", repairOrderMapper.selectCount(base.clone().eq(RepairOrder::getStatus, "待处理")));
-        map.put("processing", repairOrderMapper.selectCount(base.clone().eq(RepairOrder::getStatus, "处理中")));
-        map.put("finished", repairOrderMapper.selectCount(base.clone().eq(RepairOrder::getStatus, "已完成")));
-        return ApiResult.success(map);
+        return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @PostMapping("/auto-dispatch")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Loggable(module = "工单管理", operationType = "自动分配", operationDesc = "执行工单自动分配算法")
+    public ApiResult<Map<String, Object>> autoDispatch() {
+        List<DispatchResultVO> assignedList = repairOrderService.autoDispatch();
+        Map<String, Object> data = new HashMap<>();
+        data.put("count", assignedList.size());
+        data.put("assignedList", assignedList);
+        return ApiResult.success("自动分配完成", data);
     }
 }

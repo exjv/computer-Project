@@ -31,9 +31,11 @@
 - GET `/api/repair-orders/{id}`
 - POST `/api/repair-orders`
 - PUT `/api/repair-orders/{id}`
+- DELETE `/api/repair-orders/{id}`
 - PUT `/api/repair-orders/{id}/assign`
 - PUT `/api/repair-orders/{id}/status`
 - GET `/api/repair-orders/statistics`
+- POST `/api/repair-orders/auto-dispatch`
 
 ## RepairRecordController
 - GET `/api/repair-records/page`

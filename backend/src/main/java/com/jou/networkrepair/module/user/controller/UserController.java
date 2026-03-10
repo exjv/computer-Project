@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -37,7 +38,7 @@ public class UserController {
 
     @PostMapping
     @Loggable(module = "通用", operationType = "新增", operationDesc = "新增数据")
-    public ApiResult<Void> add(@RequestBody SysUser user) {
+    public ApiResult<Void> add(@RequestBody @Validated SysUser user) {
         user.setPassword(passwordEncoder.encode(user.getPassword() == null ? "123456" : user.getPassword()));
         user.setCreateTime(LocalDateTime.now()); user.setUpdateTime(LocalDateTime.now());
         userMapper.insert(user);
@@ -46,7 +47,7 @@ public class UserController {
 
     @PutMapping("/{id}")
     @Loggable(module = "通用", operationType = "修改", operationDesc = "修改数据")
-    public ApiResult<Void> update(@PathVariable Long id, @RequestBody SysUser req) {
+    public ApiResult<Void> update(@PathVariable Long id, @RequestBody @Validated SysUser req) {
         req.setId(id); req.setUpdateTime(LocalDateTime.now()); req.setPassword(null);
         userMapper.updateById(req);
         return ApiResult.success("修改成功", null);
