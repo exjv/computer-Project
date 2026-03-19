@@ -8,5 +8,7 @@ import lombok.Data;
 public class DispatchResultVO {
     private String orderNo;
     private Long maintainerId;
+    private String maintainerName;
+    private Double score;
     private String message;
 }

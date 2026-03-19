@@ -59,8 +59,8 @@ public class DeviceController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResult<Void> delete(@PathVariable Long id) {
-        Integer count = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>().eq(RepairOrder::getDeviceId, id));
-        if (count > 0) throw new BusinessException("存在关联报修记录，无法删除");
+        Long count = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>().eq(RepairOrder::getDeviceId, id));
+        if (count != null && count > 0L) throw new BusinessException("存在关联报修记录，无法删除");
         deviceMapper.deleteById(id); return ApiResult.success("删除成功", null);
     }
 

@@ -1,7 +1,7 @@
 <template>
-  <el-container style="height:100vh;background:#f5f7fa">
-    <el-aside width="220px" style="background:#001529;color:#fff">
-      <h3 style="padding:16px 20px;color:#fff">校园网络报修系统</h3>
+  <el-container class="layout-root">
+    <el-aside width="220px" class="layout-aside">
+      <h3 class="logo-title">校园网络报修系统</h3>
       <el-menu router background-color="#001529" text-color="#fff" active-text-color="#ffd04b">
         <el-menu-item index="/">首页</el-menu-item>
         <el-menu-item v-if="isAdmin" index="/users">用户管理</el-menu-item>
@@ -14,11 +14,14 @@
       </el-menu>
     </el-aside>
     <el-container>
-      <el-header style="background:#fff;display:flex;justify-content:space-between;align-items:center">
-        <div>欢迎使用校园网络设备管理与故障报修系统</div>
-        <div>{{ user.userInfo.realName || user.userInfo.username }}<el-button link @click="logout">退出登录</el-button></div>
+      <el-header class="layout-header">
+        <div class="welcome-text">欢迎使用校园网络设备管理与故障报修系统</div>
+        <div class="user-bar">
+          <span>{{ user.userInfo.realName || user.userInfo.username }}</span>
+          <el-button link @click="logout">退出登录</el-button>
+        </div>
       </el-header>
-      <el-main><router-view /></el-main>
+      <el-main class="layout-main"><router-view /></el-main>
     </el-container>
   </el-container>
 </template>
@@ -31,3 +34,12 @@ const isAdmin = computed(() => user.userInfo.role === 'admin')
 const isMaintainer = computed(() => user.userInfo.role === 'maintainer')
 const logout = () => { user.logout(); router.push('/login') }
 </script>
+<style scoped>
+.layout-root{height:100vh;background:#f5f7fa}
+.layout-aside{background:#001529;color:#fff}
+.logo-title{padding:16px 20px;color:#fff;font-size:18px;font-weight:700}
+.layout-header{background:#fff;display:flex;justify-content:space-between;align-items:center;padding:0 24px;box-shadow:0 1px 8px rgba(0,0,0,.06)}
+.welcome-text{font-size:16px;font-weight:600;color:#303133}
+.user-bar{display:flex;align-items:center;gap:8px}
+.layout-main{padding:20px}
+</style>

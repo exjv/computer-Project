@@ -75,6 +75,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setCreateTime(LocalDateTime.now());
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.insert(order);
+
         NetworkDevice device = new NetworkDevice();
         device.setId(order.getDeviceId());
         device.setStatus("故障");
@@ -130,33 +131,56 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
     @Override
     public List<DispatchResultVO> autoDispatch() {
-        List<RepairOrder> pendingOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>().eq(RepairOrder::getStatus, "待处理").orderByAsc(RepairOrder::getReportTime));
+        List<RepairOrder> pendingOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .eq(RepairOrder::getStatus, "待处理")
+                .orderByAsc(RepairOrder::getReportTime));
         if (pendingOrders.isEmpty()) return Collections.emptyList();
 
-        List<SysUser> maintainers = userMapper.selectList(new LambdaQueryWrapper<SysUser>().eq(SysUser::getRole, "maintainer").eq(SysUser::getStatus, 1));
+        List<SysUser> maintainers = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getRole, "maintainer")
+                .eq(SysUser::getStatus, 1));
         if (maintainers.isEmpty()) throw new BusinessException("没有可用的维修人员");
 
-        Map<Long, Integer> workloadMap = new HashMap<>();
-        for (SysUser m : maintainers) {
-            int count = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .in(RepairOrder::getStatus, Arrays.asList("已分配", "处理中")));
-            workloadMap.put(m.getId(), count);
+        Map<Long, NetworkDevice> deviceMap = new HashMap<>();
+        for (RepairOrder order : pendingOrders) {
+            deviceMap.put(order.getDeviceId(), deviceMapper.selectById(order.getDeviceId()));
         }
 
-        PriorityQueue<RepairOrder> maxHeap = repairDispatchAlgorithm.buildMaxHeap(pendingOrders);
+        Map<Long, Long> unfinishedCountMap = new HashMap<>();
+        Map<Long, Long> processingCountMap = new HashMap<>();
+        Map<Long, String> maintainerNameMap = new HashMap<>();
+        for (SysUser m : maintainers) {
+            Long unfinished = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .in(RepairOrder::getStatus, Arrays.asList("已分配", "处理中")));
+            Long processing = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .eq(RepairOrder::getStatus, "处理中"));
+            unfinishedCountMap.put(m.getId(), unfinished == null ? 0L : unfinished);
+            processingCountMap.put(m.getId(), processing == null ? 0L : processing);
+            maintainerNameMap.put(m.getId(), m.getRealName());
+        }
+
+        PriorityQueue<RepairOrder> maxHeap = repairDispatchAlgorithm.buildMaxHeap(pendingOrders, deviceMap);
         List<DispatchResultVO> result = new ArrayList<>();
 
         while (!maxHeap.isEmpty()) {
             RepairOrder order = maxHeap.poll();
-            Long targetMaintainer = workloadMap.entrySet().stream().min(Comparator.comparingInt(Map.Entry::getValue)).get().getKey();
-            order.setAssignMaintainerId(targetMaintainer);
+            Long targetMaintainerId = unfinishedCountMap.keySet().stream()
+                    .min(Comparator.comparingDouble(id -> repairDispatchAlgorithm.calcMaintainerLoad(
+                            unfinishedCountMap.get(id), processingCountMap.get(id))))
+                    .orElseThrow(() -> new BusinessException("未找到可分配维修人员"));
+
+            order.setAssignMaintainerId(targetMaintainerId);
             order.setAssignTime(LocalDateTime.now());
             order.setStatus("已分配");
             order.setUpdateTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
-            workloadMap.put(targetMaintainer, workloadMap.get(targetMaintainer) + 1);
-            result.add(new DispatchResultVO(order.getOrderNo(), targetMaintainer, "自动分配成功"));
+
+            unfinishedCountMap.put(targetMaintainerId, unfinishedCountMap.get(targetMaintainerId) + 1L);
+            Double score = repairDispatchAlgorithm.calcPriorityScore(order, deviceMap.get(order.getDeviceId()));
+            result.add(new DispatchResultVO(order.getOrderNo(), targetMaintainerId,
+                    maintainerNameMap.get(targetMaintainerId), score, "按照紧急度评分与负载均衡策略自动分配"));
         }
         return result;
     }

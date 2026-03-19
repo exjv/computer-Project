@@ -36,7 +36,7 @@ const renderCharts=()=>{
   t.setOption({xAxis:{type:'category',data:['待处理','处理中','已完成']},yAxis:{type:'value'},series:[{type:'bar',data:[orderStats.pending||0,orderStats.processing||0,orderStats.finished||0]}]})
   const r=echarts.init(rateChartRef.value)
   const finishRate=(orderStats.total?((orderStats.finished||0)/orderStats.total*100):0).toFixed(1)
-  r.setOption({series:[{type:'gauge',progress:{show:true},detail:{formatter:`${finishRate}%`},data:[{value:finishRate,name:'完成率'}]}]})
+  r.setOption({series:[{type:'gauge',center:['50%','65%'],radius:'78%',min:0,max:100,axisLine:{lineStyle:{width:14}},progress:{show:true,width:14},splitLine:{length:10,distance:-16},axisTick:{distance:-18,length:5},axisLabel:{distance:16,fontSize:10},title:{offsetCenter:[0,'45%'],fontSize:14},detail:{fontSize:24,offsetCenter:[0,'68%'],formatter:(v)=>`${v}%`},data:[{value:Number(finishRate),name:'完成率'}]}]})
 }
 
 onMounted(async () => {

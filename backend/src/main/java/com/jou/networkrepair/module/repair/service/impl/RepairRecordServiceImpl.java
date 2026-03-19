@@ -50,10 +50,10 @@ public class RepairRecordServiceImpl implements RepairRecordService {
         if (record == null) throw new BusinessException("维修记录不存在");
         if ("maintainer".equals(role) && !userId.equals(record.getMaintainerId())) throw new BusinessException("无权查看");
         if ("user".equals(role)) {
-            Integer cnt = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+            Long cnt = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
                     .eq(RepairOrder::getId, record.getRepairOrderId())
                     .eq(RepairOrder::getReporterId, userId));
-            if (cnt == 0) throw new BusinessException("无权查看");
+            if (cnt == null || cnt == 0L) throw new BusinessException("无权查看");
         }
         return record;
     }
@@ -74,7 +74,8 @@ public class RepairRecordServiceImpl implements RepairRecordService {
         repairRecordMapper.insert(record);
 
         RepairOrder order = repairOrderMapper.selectById(record.getRepairOrderId());
-        if (record.getIsResolved() == 1) {
+        if (order == null) throw new BusinessException("关联工单不存在");
+        if (record.getIsResolved() != null && record.getIsResolved() == 1) {
             order.setStatus("已完成");
             order.setFinishTime(LocalDateTime.now());
             NetworkDevice dev = new NetworkDevice();
