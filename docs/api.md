@@ -63,7 +63,7 @@
 ## LogController
 - GET `/api/logs/operation/page`
 - GET `/api/logs/login/page`
-- GET `/api/logs/business/page`（支持 `employeeNo/username/orderNo/actionType/dateFrom/dateTo`，其中时间格式为 `yyyy-MM-dd HH:mm:ss`）
+- GET `/api/logs/business/page`（支持 `employeeNo/username/orderNo/actionType/dateFrom/dateTo`，其中时间格式为 `yyyy-MM-dd HH:mm:ss`，且 `dateFrom <= dateTo`）
 
 ## PortalController
 - GET `/api/portal/home`

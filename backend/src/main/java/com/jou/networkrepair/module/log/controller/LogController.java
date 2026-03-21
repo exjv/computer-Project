@@ -51,6 +51,9 @@ public class LogController {
                                                      @RequestParam(required = false) String dateTo) {
         LocalDateTime from = parseDateTime(dateFrom, "dateFrom");
         LocalDateTime to = parseDateTime(dateTo, "dateTo");
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException("dateFrom 不能晚于 dateTo");
+        }
         LambdaQueryWrapper<BusinessLog> qw = new LambdaQueryWrapper<BusinessLog>()
                 .like(employeeNo != null && !employeeNo.isEmpty(), BusinessLog::getEmployeeNo, employeeNo)
                 .like(username != null && !username.isEmpty(), BusinessLog::getUsername, username)

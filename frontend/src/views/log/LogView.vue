@@ -26,7 +26,7 @@
               value-format="YYYY-MM-DD HH:mm:ss"
             />
           </el-form-item>
-          <el-button type="primary" @click="loadBiz">筛选</el-button>
+          <el-button type="primary" @click="applyBizFilters">筛选</el-button>
           <el-button @click="resetBiz">重置</el-button>
         </el-form>
         <el-table :data="bizList">
@@ -61,7 +61,12 @@ const loadBiz=async()=>{
   bizList.value=r.records
   bizTotal.value=r.total
 }
+const applyBizFilters=()=>{
+  bizPage.current=1
+  loadBiz()
+}
 const resetBiz=()=>{
+  bizPage.current=1
   bizQuery.employeeNo=''
   bizQuery.username=''
   bizQuery.orderNo=''
