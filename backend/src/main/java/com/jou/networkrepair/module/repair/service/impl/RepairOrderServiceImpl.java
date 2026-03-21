@@ -3,6 +3,7 @@ package com.jou.networkrepair.module.repair.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.exception.BusinessException;
+import com.jou.networkrepair.module.log.service.BusinessLogService;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;
 import com.jou.networkrepair.module.repair.algorithm.RepairDispatchAlgorithm;
@@ -39,6 +40,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     private final UserMapper userMapper;
     private final RepairDispatchAlgorithm repairDispatchAlgorithm;
     private final RepairOrderFlowMapper repairOrderFlowMapper;
+    private final BusinessLogService businessLogService;
 
     @Override
     public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority) {
@@ -92,6 +94,10 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.insert(order);
         addFlow(order.getId(), null, "已提交", "SUBMIT", userId, "user", "用户提交报修工单");
+        SysUser reporter = userMapper.selectById(userId);
+        businessLogService.record(userId, reporter == null ? null : reporter.getEmployeeNo(),
+                reporter == null ? null : reporter.getUsername(), "user", order.getOrderNo(), null,
+                "ORDER_SUBMIT", "提交报修工单：" + order.getTitle());
 
         NetworkDevice device = new NetworkDevice();
         device.setId(order.getDeviceId());
@@ -132,6 +138,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(order);
         addFlow(order.getId(), fromStatus, "待接单", "ADMIN_ASSIGN", null, "admin", "管理员分配维修人员");
+        businessLogService.record(null, null, null, "admin", order.getOrderNo(), null, "ORDER_ASSIGN", "工单分配给维修人员ID=" + dto.getAssignMaintainerId());
     }
 
     @Override
@@ -203,6 +210,9 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         } else {
             throw new BusinessException("不支持的操作");
         }
+        SysUser operator = userMapper.selectById(userId);
+        businessLogService.record(userId, operator == null ? null : operator.getEmployeeNo(),
+                operator == null ? null : operator.getUsername(), role, order.getOrderNo(), null, action, "执行工单动作：" + action);
     }
 
     @Override

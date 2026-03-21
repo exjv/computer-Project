@@ -120,6 +120,19 @@ CREATE TABLE login_log (
   login_time DATETIME
 );
 
+CREATE TABLE business_log (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT,
+  employee_no VARCHAR(30),
+  username VARCHAR(50),
+  role VARCHAR(20),
+  order_no VARCHAR(50),
+  device_code VARCHAR(50),
+  action_type VARCHAR(50),
+  content VARCHAR(500),
+  create_time DATETIME
+);
+
 INSERT INTO sys_user
 (id,employee_no,username,password,real_name,phone,email,department,role,status,last_login_time,wx_open_id,qq_open_id,create_time,update_time) VALUES
 (1,'A2026001','admin','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','系统管理员','13800000001','admin@campus.edu','网络信息中心','admin',1,NULL,NULL,NULL,NOW(),NOW()),
@@ -161,3 +174,8 @@ INSERT INTO repair_record VALUES
 INSERT INTO notice VALUES
 (1,'校园网设备巡检通知','本周六进行核心网络设备巡检，期间部分区域网络可能短时波动。',1,NOW(),NOW()),
 (2,'报修系统升级完成','校园网络报修系统已升级，支持在线查看维修进度。',1,NOW(),NOW());
+
+INSERT INTO business_log (user_id,employee_no,username,role,order_no,device_code,action_type,content,create_time) VALUES
+(2,'U2026001','user1','user','RO202406010001','DEV-002','ORDER_SUBMIT','用户提交出口网络中断报修工单',NOW()),
+(1,'A2026001','admin','admin','RO202406010001','DEV-002','ADMIN_APPROVE','管理员审核通过工单',NOW()),
+(1,'A2026001','admin','admin','RO202406010002','DEV-004','ORDER_ASSIGN','管理员分配工单给维修人员',NOW());

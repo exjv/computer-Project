@@ -6,6 +6,7 @@ import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.common.utils.JwtUtil;
 import com.jou.networkrepair.module.auth.dto.LoginDTO;
 import com.jou.networkrepair.module.auth.service.CaptchaService;
+import com.jou.networkrepair.module.log.service.BusinessLogService;
 import com.jou.networkrepair.module.auth.vo.LoginVO;
 import com.jou.networkrepair.module.log.entity.LoginLog;
 import com.jou.networkrepair.module.log.mapper.LoginLogMapper;
@@ -30,6 +31,7 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final LoginLogMapper loginLogMapper;
     private final CaptchaService captchaService;
+    private final BusinessLogService businessLogService;
 
     @GetMapping("/captcha")
     public ApiResult<Map<String, String>> captcha() {
@@ -40,26 +42,31 @@ public class AuthController {
     public ApiResult<LoginVO> login(@RequestBody @Validated LoginDTO dto, HttpServletRequest request) {
         if (!captchaService.verify(dto.getCaptchaKey(), dto.getCaptchaCode())) {
             saveLoginLog(null, dto.getAccount(), "FAIL_CAPTCHA", request.getRemoteAddr());
+            businessLogService.record(null, null, dto.getAccount(), dto.getRole(), null, null, "LOGIN_FAIL", "登录失败：验证码错误");
             throw new BusinessException("验证码错误或已失效");
         }
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .and(w -> w.eq(SysUser::getUsername, dto.getAccount()).or().eq(SysUser::getEmployeeNo, dto.getAccount())));
         if (user == null) {
             saveLoginLog(null, dto.getAccount(), "FAIL_ACCOUNT", request.getRemoteAddr());
+            businessLogService.record(null, null, dto.getAccount(), dto.getRole(), null, null, "LOGIN_FAIL", "登录失败：账号不存在");
             throw new BusinessException("账号不存在");
         }
         if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
             saveLoginLog(user.getId(), user.getUsername(), "FAIL_PASSWORD", request.getRemoteAddr());
+            businessLogService.record(user.getId(), user.getEmployeeNo(), user.getUsername(), user.getRole(), null, null, "LOGIN_FAIL", "登录失败：密码错误");
             throw new BusinessException("密码错误");
         }
         if (!dto.getRole().equals(user.getRole())) {
             saveLoginLog(user.getId(), user.getUsername(), "FAIL_ROLE", request.getRemoteAddr());
+            businessLogService.record(user.getId(), user.getEmployeeNo(), user.getUsername(), user.getRole(), null, null, "LOGIN_FAIL", "登录失败：角色入口错误");
             throw new BusinessException("角色选择错误或无权限使用该入口");
         }
         if (user.getStatus() == 0) throw new BusinessException("账号已禁用");
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
         saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", request.getRemoteAddr());
+        businessLogService.record(user.getId(), user.getEmployeeNo(), user.getUsername(), user.getRole(), null, null, "LOGIN_SUCCESS", "登录成功");
         return ApiResult.success(new LoginVO(jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole()), user.getRole(), user.getUsername()));
     }
 
