@@ -20,3 +20,13 @@ export const exportRepairOrdersApi = params => axios.get('/api/repair-orders/exp
   responseType: 'blob',
   headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
 })
+export const uploadFileApi = file => {
+  const form = new FormData()
+  form.append('file', file)
+  return axios.post('/api/files/upload', form, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}

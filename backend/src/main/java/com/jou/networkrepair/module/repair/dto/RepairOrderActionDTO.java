@@ -18,4 +18,5 @@ public class RepairOrderActionDTO {
     @Max(value = 5, message = "满意度最大为5")
     private Integer satisfactionScore;
     private String feedback;
+    private String attachmentUrl;
 }

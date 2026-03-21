@@ -133,6 +133,16 @@ CREATE TABLE business_log (
   create_time DATETIME
 );
 
+CREATE TABLE file_attachment (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  biz_type VARCHAR(30),
+  biz_id BIGINT,
+  file_name VARCHAR(255),
+  file_url VARCHAR(500),
+  uploader_id BIGINT,
+  create_time DATETIME
+);
+
 INSERT INTO sys_user
 (id,employee_no,username,password,real_name,phone,email,department,role,status,last_login_time,wx_open_id,qq_open_id,create_time,update_time) VALUES
 (1,'A2026001','admin','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','系统管理员','13800000001','admin@campus.edu','网络信息中心','admin',1,NULL,NULL,NULL,NOW(),NOW()),

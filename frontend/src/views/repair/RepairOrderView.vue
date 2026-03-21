@@ -78,6 +78,12 @@
         <el-form-item label="反馈说明">
           <el-input v-model="feedbackForm.feedback" type="textarea" placeholder="请输入反馈意见（可选）" />
         </el-form-item>
+        <el-form-item label="现场图片">
+          <el-upload :show-file-list="false" :auto-upload="false" :on-change="onUploadChange">
+            <el-button>上传图片</el-button>
+          </el-upload>
+          <el-link v-if="feedbackForm.attachmentUrl" :href="feedbackForm.attachmentUrl" target="_blank" style="margin-left:10px">查看已上传图片</el-link>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="feedbackDialog=false">取消</el-button>
@@ -88,7 +94,7 @@
 </template>
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { getPage, postApi, putApi, delApi, autoDispatchApi, exportRepairOrdersApi } from '../../api'
+import { getPage, postApi, putApi, delApi, autoDispatchApi, exportRepairOrdersApi, uploadFileApi } from '../../api'
 import { useUserStore } from '../../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 const role = computed(()=>useUserStore().userInfo.role)
@@ -104,7 +110,7 @@ const feedbackDialog=ref(false)
 const form=reactive({id:null,deviceId:'',title:'',description:'',priority:'中'})
 const current=ref({}),assignForm=reactive({id:null,assignMaintainerId:null}),statusForm=reactive({id:null,status:'处理中'})
 const flowList=ref([])
-const feedbackForm = reactive({ id:null, action:'', satisfactionScore:5, feedback:'' })
+const feedbackForm = reactive({ id:null, action:'', satisfactionScore:5, feedback:'', attachmentUrl:'' })
 const apiPath = computed(()=>isAdmin.value?'/repair-orders/page':'/repair-orders/my')
 const load = async()=>{const r=await getPage(apiPath.value,{...query,...page});list.value=r.records;total.value=r.total}
 const reset=()=>{Object.assign(query,{orderNo:'',title:'',priority:'',status:''});load()}
@@ -134,6 +140,7 @@ const quickAction = async (row, action) => {
     feedbackForm.action = action
     feedbackForm.satisfactionScore = 5
     feedbackForm.feedback = ''
+    feedbackForm.attachmentUrl = ''
     feedbackDialog.value = true
     return
   }
@@ -142,11 +149,20 @@ const quickAction = async (row, action) => {
   await load()
 }
 const submitFeedbackAction = async () => {
-  const payload = { action: feedbackForm.action, feedback: feedbackForm.feedback, satisfactionScore: feedbackForm.satisfactionScore }
+  const payload = { action: feedbackForm.action, feedback: feedbackForm.feedback, satisfactionScore: feedbackForm.satisfactionScore, attachmentUrl: feedbackForm.attachmentUrl }
   await putApi(`/repair-orders/${feedbackForm.id}/action`, payload)
   ElMessage.success('反馈已提交')
   feedbackDialog.value = false
   await load()
+}
+const onUploadChange = async (file) => {
+  const res = await uploadFileApi(file.raw)
+  if (res.data?.code === 200) {
+    feedbackForm.attachmentUrl = res.data.data.url
+    ElMessage.success('图片上传成功')
+  } else {
+    ElMessage.error('图片上传失败')
+  }
 }
 const canAction = (row, action) => {
   if (action === 'ADMIN_APPROVE' || action === 'ADMIN_REJECT') return isAdmin.value && row.status === '已提交'

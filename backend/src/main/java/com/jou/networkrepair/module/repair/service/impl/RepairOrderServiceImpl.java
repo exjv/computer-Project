@@ -199,13 +199,13 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             if (dto.getSatisfactionScore() == null) throw new BusinessException("请填写满意度评分");
             order.setConfirmTime(LocalDateTime.now());
             order.setSatisfactionScore(dto.getSatisfactionScore());
-            order.setFeedback(dto.getFeedback());
+            order.setFeedback(buildFeedback(dto.getFeedback(), dto.getAttachmentUrl()));
             moveStatus(order, "已完成", 100, userId, role, dto.getRemark(), action);
         } else if ("USER_CONFIRM_UNRESOLVED".equals(action)) {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
             checkStatus(order.getStatus(), "待验收");
-            order.setFeedback(dto.getFeedback());
+            order.setFeedback(buildFeedback(dto.getFeedback(), dto.getAttachmentUrl()));
             moveStatus(order, "维修中", 60, userId, role, dto.getRemark(), action);
         } else {
             throw new BusinessException("不支持的操作");
@@ -413,5 +413,11 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         if (value == null) return "";
         String escaped = value.replace("\"", "\"\"");
         return "\"" + escaped + "\"";
+    }
+
+    private String buildFeedback(String feedback, String attachmentUrl) {
+        if (attachmentUrl == null || attachmentUrl.trim().isEmpty()) return feedback;
+        if (feedback == null || feedback.trim().isEmpty()) return "附件：" + attachmentUrl;
+        return feedback + "（附件：" + attachmentUrl + "）";
     }
 }
