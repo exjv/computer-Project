@@ -13,6 +13,9 @@ import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -118,5 +121,17 @@ public class RepairOrderController {
         data.put("count", assignedList.size());
         data.put("assignedList", assignedList);
         return ApiResult.success("自动分配完成", data);
+    }
+
+    @GetMapping("/export")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<String> export(@RequestParam(required = false) String status,
+                                         @RequestParam(required = false) String priority,
+                                         @RequestParam(required = false) String orderNo) {
+        String csv = repairOrderService.exportCsv(status, priority, orderNo);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=repair-orders.csv")
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .body(csv);
     }
 }

@@ -25,4 +25,5 @@ public interface RepairOrderService {
     void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role);
     Map<String, Object> stats(Long userId, String role);
     List<DispatchResultVO> autoDispatch();
+    String exportCsv(String status, String priority, String orderNo);
 }

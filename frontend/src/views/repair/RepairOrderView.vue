@@ -12,6 +12,7 @@
     <div style="margin-bottom:10px">
       <el-button type="primary" v-if="isUser || isAdmin" @click="openAdd">提交报修</el-button>
       <el-button type="success" v-if="isAdmin" @click="autoDispatch">自动分配工单</el-button>
+      <el-button type="warning" v-if="isAdmin" @click="exportCsv">导出报表</el-button>
     </div>
 
     <el-table :data="list" style="margin-top:12px">
@@ -87,7 +88,7 @@
 </template>
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { getPage, postApi, putApi, delApi, autoDispatchApi } from '../../api'
+import { getPage, postApi, putApi, delApi, autoDispatchApi, exportRepairOrdersApi } from '../../api'
 import { useUserStore } from '../../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 const role = computed(()=>useUserStore().userInfo.role)
@@ -117,6 +118,16 @@ const saveStatus=async()=>{await putApi(`/repair-orders/${statusForm.id}/status`
 const detail=async(row)=>{current.value=await getPage(`/repair-orders/${row.id}`);flowList.value=await getPage(`/repair-orders/${row.id}/flows`);detailDialog.value=true}
 const remove=async(row)=>{await ElMessageBox.confirm('确认删除该工单吗？','删除确认');await delApi(`/repair-orders/${row.id}`);ElMessage.success('删除成功');load()}
 const autoDispatch=async()=>{const r=await autoDispatchApi();ElMessage.success(`自动分配完成，共分配${r.count}条工单`);load()}
+const exportCsv = async () => {
+  const res = await exportRepairOrdersApi({ status: query.status, priority: query.priority, orderNo: query.orderNo })
+  const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `repair-orders-${Date.now()}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 const quickAction = async (row, action) => {
   if (action === 'USER_CONFIRM_RESOLVED' || action === 'USER_CONFIRM_UNRESOLVED') {
     feedbackForm.id = row.id

@@ -323,6 +323,30 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         return result;
     }
 
+    @Override
+    public String exportCsv(String status, String priority, String orderNo) {
+        List<RepairOrder> orders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status)
+                .eq(priority != null && !priority.isEmpty(), RepairOrder::getPriority, priority)
+                .like(orderNo != null && !orderNo.isEmpty(), RepairOrder::getOrderNo, orderNo)
+                .orderByDesc(RepairOrder::getId));
+        StringBuilder sb = new StringBuilder();
+        sb.append("工单编号,标题,优先级,状态,报修人ID,维修人员ID,报修时间,完成时间,满意度\n");
+        for (RepairOrder o : orders) {
+            sb.append(csv(o.getOrderNo())).append(",")
+                    .append(csv(o.getTitle())).append(",")
+                    .append(csv(o.getPriority())).append(",")
+                    .append(csv(o.getStatus())).append(",")
+                    .append(o.getReporterId() == null ? "" : o.getReporterId()).append(",")
+                    .append(o.getAssignMaintainerId() == null ? "" : o.getAssignMaintainerId()).append(",")
+                    .append(o.getReportTime() == null ? "" : o.getReportTime()).append(",")
+                    .append(o.getFinishTime() == null ? "" : o.getFinishTime()).append(",")
+                    .append(o.getSatisfactionScore() == null ? "" : o.getSatisfactionScore())
+                    .append("\n");
+        }
+        return sb.toString();
+    }
+
     private String generateOrderNo() {
         String prefix = "RO" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         String orderNo = prefix + ThreadLocalRandom.current().nextInt(100, 999);
@@ -383,5 +407,11 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
     private void checkMaintainerScope(RepairOrder order, Long userId) {
         if (!userId.equals(order.getAssignMaintainerId())) throw new BusinessException("仅可处理分配给自己的工单");
+    }
+
+    private String csv(String value) {
+        if (value == null) return "";
+        String escaped = value.replace("\"", "\"\"");
+        return "\"" + escaped + "\"";
     }
 }

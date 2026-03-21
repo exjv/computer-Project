@@ -1,4 +1,5 @@
 import request from '../utils/request'
+import axios from 'axios'
 
 export const loginApi = data => request.post('/auth/login', data)
 export const captchaApi = () => request.get('/auth/captcha')
@@ -14,3 +15,8 @@ export const putApi = (url, data) => request.put(url, data)
 export const delApi = url => request.delete(url)
 
 export const autoDispatchApi = () => request.post('/repair-orders/auto-dispatch')
+export const exportRepairOrdersApi = params => axios.get('/api/repair-orders/export', {
+  params,
+  responseType: 'blob',
+  headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+})
