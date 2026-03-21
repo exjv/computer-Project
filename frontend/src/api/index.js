@@ -41,3 +41,7 @@ export const importUsersApi = file => {
     }
   })
 }
+export const downloadUserTemplateApi = () => axios.get('/api/users/import/template', {
+  responseType: 'blob',
+  headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+})

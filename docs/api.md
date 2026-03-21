@@ -3,6 +3,8 @@
 
 ## AuthController
 - POST `/api/auth/login`
+- GET `/api/auth/captcha`
+- GET `/api/auth/oauth/{provider}/url`
 - GET `/api/auth/userInfo`
 - PUT `/api/auth/updatePassword`
 - PUT `/api/auth/updateProfile`
@@ -11,6 +13,8 @@
 ## UserController
 - GET `/api/users/page`
 - POST `/api/users`
+- POST `/api/users/import`
+- GET `/api/users/import/template`
 - PUT `/api/users/{id}`
 - DELETE `/api/users/{id}`
 - PUT `/api/users/{id}/reset-password`
@@ -20,6 +24,7 @@
 ## DeviceController
 - GET `/api/devices/page`
 - GET `/api/devices/{id}`
+- GET `/api/devices/{id}/profile`
 - POST `/api/devices`
 - PUT `/api/devices/{id}`
 - DELETE `/api/devices/{id}`
@@ -33,9 +38,13 @@
 - PUT `/api/repair-orders/{id}`
 - DELETE `/api/repair-orders/{id}`
 - PUT `/api/repair-orders/{id}/assign`
+- PUT `/api/repair-orders/{id}/action`
+- GET `/api/repair-orders/{id}/flows`
 - PUT `/api/repair-orders/{id}/status`
+- GET `/api/repair-orders/{id}/predict-time`
 - GET `/api/repair-orders/statistics`
 - POST `/api/repair-orders/auto-dispatch`
+- GET `/api/repair-orders/export`
 
 ## RepairRecordController
 - GET `/api/repair-records/page`
@@ -54,3 +63,10 @@
 ## LogController
 - GET `/api/logs/operation/page`
 - GET `/api/logs/login/page`
+- GET `/api/logs/business/page`
+
+## PortalController
+- GET `/api/portal/home`
+
+## FileController
+- POST `/api/files/upload`

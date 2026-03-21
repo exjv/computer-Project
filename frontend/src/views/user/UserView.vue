@@ -9,6 +9,7 @@
       <el-button type="primary" @click="load">查询</el-button><el-button @click="reset">重置</el-button>
     </el-form>
     <el-button type="primary" @click="openAdd">新增用户</el-button>
+    <el-button type="info" style="margin-left:8px" @click="downloadTemplate">下载导入模板</el-button>
     <el-upload :show-file-list="false" :auto-upload="false" :on-change="onImportChange" style="display:inline-block;margin-left:8px">
       <el-button type="success">批量导入用户</el-button>
     </el-upload>
@@ -23,7 +24,7 @@
 </template>
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import { getPage, postApi, putApi, delApi, importUsersApi } from '../../api'
+import { getPage, postApi, putApi, delApi, importUsersApi, downloadUserTemplateApi } from '../../api'
 import { ElMessageBox, ElMessage } from 'element-plus'
 const query=reactive({employeeNo:'',username:'',role:'',phone:''}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
 const dialog=ref(false),form=reactive({})
@@ -40,6 +41,16 @@ const onImportChange = async (file) => {
   if (res.data?.code === 200) ElMessage.success(res.data.message || '导入成功')
   else ElMessage.error('导入失败')
   await load()
+}
+const downloadTemplate = async () => {
+  const res = await downloadUserTemplateApi()
+  const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'user-import-template.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 onMounted(load)
 </script>

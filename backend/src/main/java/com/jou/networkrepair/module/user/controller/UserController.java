@@ -10,6 +10,9 @@ import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.multipart.MultipartFile;
@@ -128,6 +131,16 @@ public class UserController {
             }
         }
         return ApiResult.success("导入完成：成功 " + success + " 条，跳过 " + skip + " 条", null);
+    }
+
+    @GetMapping("/import/template")
+    public ResponseEntity<String> importTemplate() {
+        String csv = "employeeNo,username,realName,role,phone,email\n" +
+                "U2026999,testuser,测试用户,user,13800009999,test@campus.edu\n";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=user-import-template.csv")
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .body(csv);
     }
 
     private void checkEmployeeNoUnique(String employeeNo, Long id) {
