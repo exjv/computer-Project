@@ -57,8 +57,15 @@ public class AuthController {
     public ApiResult<Void> updatePassword(@RequestBody Map<String, String> body, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         SysUser user = userMapper.selectById(userId);
-        if (!passwordEncoder.matches(body.get("oldPassword"), user.getPassword())) throw new BusinessException("旧密码错误");
-        user.setPassword(passwordEncoder.encode(body.get("newPassword")));
+        String oldPassword = body.get("oldPassword");
+        String newPassword = body.get("newPassword");
+        if (oldPassword == null || oldPassword.trim().isEmpty()) throw new BusinessException("旧密码不能为空");
+        if (newPassword == null || newPassword.trim().isEmpty()) throw new BusinessException("新密码不能为空");
+        if (newPassword.length() < 6) throw new BusinessException("新密码长度不能小于6位");
+        if (oldPassword.equals(newPassword)) throw new BusinessException("新旧密码不能一致");
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) throw new BusinessException("旧密码错误");
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
         return ApiResult.success("修改成功", null);
     }
