@@ -15,6 +15,7 @@ export const putApi = (url, data) => request.put(url, data)
 export const delApi = url => request.delete(url)
 
 export const autoDispatchApi = () => request.post('/repair-orders/auto-dispatch')
+export const predictRepairTimeApi = id => request.get(`/repair-orders/${id}/predict-time`)
 export const exportRepairOrdersApi = params => axios.get('/api/repair-orders/export', {
   params,
   responseType: 'blob',

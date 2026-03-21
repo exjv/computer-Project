@@ -347,6 +347,36 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         return sb.toString();
     }
 
+    @Override
+    public Map<String, Object> predictRepairTime(Long id, Long userId, String role) {
+        RepairOrder order = detail(id, userId, role);
+        NetworkDevice device = deviceMapper.selectById(order.getDeviceId());
+        int baseHours = "高".equals(order.getPriority()) ? 4 : ("中".equals(order.getPriority()) ? 8 : 16);
+        int deviceAdjust = 0;
+        if (device != null && device.getDeviceType() != null) {
+            if ("服务器".equals(device.getDeviceType()) || "防火墙".equals(device.getDeviceType())) deviceAdjust = 3;
+            if ("无线AP".equals(device.getDeviceType())) deviceAdjust = -1;
+        }
+
+        List<RepairOrder> finishedOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .eq(RepairOrder::getStatus, "已完成"));
+        OptionalDouble histAvg = finishedOrders.stream()
+                .filter(o -> o.getStartRepairTime() != null && o.getFinishTime() != null)
+                .filter(o -> {
+                    NetworkDevice d = deviceMapper.selectById(o.getDeviceId());
+                    return d != null && device != null && Objects.equals(d.getDeviceType(), device.getDeviceType());
+                })
+                .mapToLong(o -> Math.max(1, java.time.temporal.ChronoUnit.HOURS.between(o.getStartRepairTime(), o.getFinishTime())))
+                .average();
+        int historyHours = (int) Math.round(histAvg.orElse(6));
+        int predictedHours = Math.max(1, (baseHours + deviceAdjust + historyHours) / 2);
+        Map<String, Object> map = new HashMap<>();
+        map.put("predictedHours", predictedHours);
+        map.put("predictedFinishTime", LocalDateTime.now().plusHours(predictedHours));
+        map.put("reason", "依据优先级基准工时(" + baseHours + "h)、设备类型调整(" + deviceAdjust + "h)和历史同类平均工时(" + historyHours + "h)估算");
+        return map;
+    }
+
     private String generateOrderNo() {
         String prefix = "RO" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         String orderNo = prefix + ThreadLocalRandom.current().nextInt(100, 999);

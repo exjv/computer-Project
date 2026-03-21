@@ -35,6 +35,7 @@
           <el-button v-if="canAction(s.row,'USER_CONFIRM_UNRESOLVED')" link type="warning" @click="quickAction(s.row,'USER_CONFIRM_UNRESOLVED')">未解决退回</el-button>
           <el-button v-if="canAction(s.row,'USER_CANCEL')" link type="danger" @click="quickAction(s.row,'USER_CANCEL')">撤销报修</el-button>
           <el-button v-if="isAdmin || isMaintainer" link @click="changeStatus(s.row)">手工改状态</el-button>
+          <el-button link type="primary" @click="predictTime(s.row)">预计修复时间</el-button>
           <el-button v-if="isAdmin" link @click="edit(s.row)">编辑</el-button>
           <el-button v-if="isAdmin" link type="danger" @click="remove(s.row)">删除</el-button>
         </template>
@@ -64,6 +65,9 @@
         <el-descriptions-item label="维修人员">{{ current.assignMaintainerId || '-' }}</el-descriptions-item>
       </el-descriptions>
       <el-divider>流程时间轴</el-divider>
+      <el-alert v-if="predictInfo.predictedHours" type="success" :closable="false" style="margin-bottom: 10px">
+        预计还需 {{ predictInfo.predictedHours }} 小时；预计完成：{{ predictInfo.predictedFinishTime }}；依据：{{ predictInfo.reason }}
+      </el-alert>
       <el-timeline>
         <el-timeline-item v-for="f in flowList" :key="f.id" :timestamp="f.createTime">
           {{ f.fromStatus || '开始' }} → {{ f.toStatus }} | {{ f.action }} | {{ f.remark || '无备注' }}
@@ -94,7 +98,7 @@
 </template>
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { getPage, postApi, putApi, delApi, autoDispatchApi, exportRepairOrdersApi, uploadFileApi } from '../../api'
+import { getPage, postApi, putApi, delApi, autoDispatchApi, exportRepairOrdersApi, uploadFileApi, predictRepairTimeApi } from '../../api'
 import { useUserStore } from '../../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 const role = computed(()=>useUserStore().userInfo.role)
@@ -110,6 +114,7 @@ const feedbackDialog=ref(false)
 const form=reactive({id:null,deviceId:'',title:'',description:'',priority:'中'})
 const current=ref({}),assignForm=reactive({id:null,assignMaintainerId:null}),statusForm=reactive({id:null,status:'处理中'})
 const flowList=ref([])
+const predictInfo = reactive({})
 const feedbackForm = reactive({ id:null, action:'', satisfactionScore:5, feedback:'', attachmentUrl:'' })
 const apiPath = computed(()=>isAdmin.value?'/repair-orders/page':'/repair-orders/my')
 const load = async()=>{const r=await getPage(apiPath.value,{...query,...page});list.value=r.records;total.value=r.total}
@@ -121,7 +126,11 @@ const assign=(row)=>{assignForm.id=row.id;assignForm.assignMaintainerId=row.assi
 const saveAssign=async()=>{await putApi(`/repair-orders/${assignForm.id}/assign`,assignForm);ElMessage.success('分配成功');assignDialog.value=false;load()}
 const changeStatus=(row)=>{statusForm.id=row.id;statusForm.status=row.status;statusDialog.value=true}
 const saveStatus=async()=>{await putApi(`/repair-orders/${statusForm.id}/status`,statusForm);ElMessage.success('状态更新成功');statusDialog.value=false;load()}
-const detail=async(row)=>{current.value=await getPage(`/repair-orders/${row.id}`);flowList.value=await getPage(`/repair-orders/${row.id}/flows`);detailDialog.value=true}
+const detail=async(row)=>{Object.assign(predictInfo,{predictedHours:null,predictedFinishTime:null,reason:''});current.value=await getPage(`/repair-orders/${row.id}`);flowList.value=await getPage(`/repair-orders/${row.id}/flows`);detailDialog.value=true}
+const predictTime = async (row) => {
+  Object.assign(predictInfo, await predictRepairTimeApi(row.id))
+  ElMessage.success('已计算预计修复时间')
+}
 const remove=async(row)=>{await ElMessageBox.confirm('确认删除该工单吗？','删除确认');await delApi(`/repair-orders/${row.id}`);ElMessage.success('删除成功');load()}
 const autoDispatch=async()=>{const r=await autoDispatchApi();ElMessage.success(`自动分配完成，共分配${r.count}条工单`);load()}
 const exportCsv = async () => {

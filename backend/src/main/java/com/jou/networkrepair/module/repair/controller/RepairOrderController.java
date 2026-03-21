@@ -134,4 +134,9 @@ public class RepairOrderController {
                 .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .body(csv);
     }
+
+    @GetMapping("/{id}/predict-time")
+    public ApiResult<Map<String, Object>> predictTime(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.predictRepairTime(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
 }

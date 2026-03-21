@@ -26,4 +26,5 @@ public interface RepairOrderService {
     Map<String, Object> stats(Long userId, String role);
     List<DispatchResultVO> autoDispatch();
     String exportCsv(String status, String priority, String orderNo);
+    Map<String, Object> predictRepairTime(Long id, Long userId, String role);
 }
