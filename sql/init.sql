@@ -46,11 +46,33 @@ CREATE TABLE repair_order (
   priority VARCHAR(20),
   status VARCHAR(20),
   assign_maintainer_id BIGINT,
+  progress INT DEFAULT 0,
   report_time DATETIME,
+  audit_time DATETIME,
+  audit_by BIGINT,
   assign_time DATETIME,
+  accept_time DATETIME,
+  start_repair_time DATETIME,
+  expected_finish_time DATETIME,
   finish_time DATETIME,
+  confirm_time DATETIME,
+  satisfaction_score INT,
+  feedback VARCHAR(500),
+  close_reason VARCHAR(255),
   create_time DATETIME,
   update_time DATETIME
+);
+
+CREATE TABLE repair_order_flow (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  repair_order_id BIGINT NOT NULL,
+  from_status VARCHAR(20),
+  to_status VARCHAR(20),
+  action VARCHAR(40),
+  operator_id BIGINT,
+  operator_role VARCHAR(20),
+  remark VARCHAR(500),
+  create_time DATETIME
 );
 
 CREATE TABLE repair_record (
@@ -114,12 +136,22 @@ INSERT INTO network_device VALUES
 (5,'DEV-005','教学楼汇聚交换机','交换机','Huawei S5735','10.0.3.1','00-11-22-33-44-05','教学楼A栋','2022-09-01','正常','汇聚层设备',NOW(),NOW()),
 (6,'DEV-006','认证服务器','服务器','Dell R740','10.0.9.10','00-11-22-33-44-06','数据中心','2021-12-09','停用','备用服务器',NOW(),NOW());
 
-INSERT INTO repair_order VALUES
-(1,'RO202406010001',2,2,'出口网络中断','校园网无法访问外网','高','待处理',NULL,NOW(),NULL,NULL,NOW(),NOW()),
-(2,'RO202406010002',4,3,'图书馆无线信号弱','三层区域频繁掉线','中','已分配',4,NOW(),NOW(),NULL,NOW(),NOW()),
-(3,'RO202406010003',1,2,'核心交换机端口告警','端口丢包率高','高','处理中',5,NOW(),NOW(),NULL,NOW(),NOW()),
-(4,'RO202406010004',5,3,'教学楼网络延迟','课堂视频卡顿','中','已完成',4,NOW(),NOW(),NOW(),NOW(),NOW()),
-(5,'RO202406010005',3,2,'防火墙策略异常','部分系统无法访问','低','已关闭',5,NOW(),NOW(),NOW(),NOW(),NOW());
+INSERT INTO repair_order
+(id,order_no,device_id,reporter_id,title,description,priority,status,assign_maintainer_id,progress,report_time,audit_time,audit_by,assign_time,accept_time,start_repair_time,expected_finish_time,finish_time,confirm_time,satisfaction_score,feedback,close_reason,create_time,update_time) VALUES
+(1,'RO202406010001',2,2,'出口网络中断','校园网无法访问外网','高','待分配',NULL,30,NOW(),NOW(),1,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NOW(),NOW()),
+(2,'RO202406010002',4,3,'图书馆无线信号弱','三层区域频繁掉线','中','待接单',4,35,NOW(),NOW(),1,NOW(),NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NOW(),NOW()),
+(3,'RO202406010003',1,2,'核心交换机端口告警','端口丢包率高','高','维修中',5,70,NOW(),NOW(),1,NOW(),NOW(),NOW(),DATE_ADD(NOW(), INTERVAL 6 HOUR),NULL,NULL,NULL,NULL,NULL,NOW(),NOW()),
+(4,'RO202406010004',5,3,'教学楼网络延迟','课堂视频卡顿','中','已完成',4,100,NOW(),NOW(),1,NOW(),NOW(),NOW(),DATE_ADD(NOW(), INTERVAL 2 HOUR),NOW(),NOW(),5,'已恢复正常',NULL,NOW(),NOW()),
+(5,'RO202406010005',3,2,'防火墙策略异常','部分系统无法访问','低','审核驳回',NULL,0,NOW(),NOW(),1,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'信息不足，需补充日志截图',NOW(),NOW());
+
+INSERT INTO repair_order_flow (repair_order_id,from_status,to_status,action,operator_id,operator_role,remark,create_time) VALUES
+(1,NULL,'已提交','SUBMIT',2,'user','用户提交工单',NOW()),
+(1,'已提交','审核通过','ADMIN_APPROVE',1,'admin','审核通过',NOW()),
+(1,'审核通过','待分配','ADMIN_TO_ASSIGN',1,'admin','进入待分配',NOW()),
+(2,NULL,'已提交','SUBMIT',3,'user','用户提交工单',NOW()),
+(2,'已提交','审核通过','ADMIN_APPROVE',1,'admin','审核通过',NOW()),
+(2,'审核通过','待分配','ADMIN_TO_ASSIGN',1,'admin','进入待分配',NOW()),
+(2,'待分配','待接单','ADMIN_ASSIGN',1,'admin','分配给王工',NOW());
 
 INSERT INTO repair_record VALUES
 (1,4,5,4,'交换机端口老化','更换上联模块并重启设备','延迟恢复正常',1,NOW(),NOW(),NOW()),
