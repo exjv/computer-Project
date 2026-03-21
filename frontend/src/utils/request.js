@@ -12,7 +12,7 @@ request.interceptors.response.use(res => {
   if (r.code !== 200) { ElMessage.error(r.message || '请求失败'); return Promise.reject(r) }
   return r.data
 }, err => {
-  if (err.response?.status === 401) { localStorage.clear(); location.href = '/login' }
+  if (err.response?.status === 401) { localStorage.clear(); location.href = '/portal' }
   ElMessage.error(err.response?.data?.message || '网络异常')
   return Promise.reject(err)
 })

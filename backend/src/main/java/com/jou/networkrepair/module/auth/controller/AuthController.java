@@ -5,6 +5,7 @@ import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.common.utils.JwtUtil;
 import com.jou.networkrepair.module.auth.dto.LoginDTO;
+import com.jou.networkrepair.module.auth.service.CaptchaService;
 import com.jou.networkrepair.module.auth.vo.LoginVO;
 import com.jou.networkrepair.module.log.entity.LoginLog;
 import com.jou.networkrepair.module.log.mapper.LoginLogMapper;
@@ -28,19 +29,48 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final LoginLogMapper loginLogMapper;
+    private final CaptchaService captchaService;
+
+    @GetMapping("/captcha")
+    public ApiResult<Map<String, String>> captcha() {
+        return ApiResult.success(captchaService.generate());
+    }
 
     @PostMapping("/login")
     public ApiResult<LoginVO> login(@RequestBody @Validated LoginDTO dto, HttpServletRequest request) {
-        SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, dto.getUsername()));
-        String status = "SUCCESS";
-        if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
-            status = "FAIL";
-            saveLoginLog(null, dto.getUsername(), status, request.getRemoteAddr());
-            throw new BusinessException("用户名或密码错误");
+        if (!captchaService.verify(dto.getCaptchaKey(), dto.getCaptchaCode())) {
+            saveLoginLog(null, dto.getAccount(), "FAIL_CAPTCHA", request.getRemoteAddr());
+            throw new BusinessException("验证码错误或已失效");
+        }
+        SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
+                .and(w -> w.eq(SysUser::getUsername, dto.getAccount()).or().eq(SysUser::getEmployeeNo, dto.getAccount())));
+        if (user == null) {
+            saveLoginLog(null, dto.getAccount(), "FAIL_ACCOUNT", request.getRemoteAddr());
+            throw new BusinessException("账号不存在");
+        }
+        if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+            saveLoginLog(user.getId(), user.getUsername(), "FAIL_PASSWORD", request.getRemoteAddr());
+            throw new BusinessException("密码错误");
+        }
+        if (!dto.getRole().equals(user.getRole())) {
+            saveLoginLog(user.getId(), user.getUsername(), "FAIL_ROLE", request.getRemoteAddr());
+            throw new BusinessException("角色选择错误或无权限使用该入口");
         }
         if (user.getStatus() == 0) throw new BusinessException("账号已禁用");
-        saveLoginLog(user.getId(), user.getUsername(), status, request.getRemoteAddr());
+        user.setLastLoginTime(LocalDateTime.now());
+        userMapper.updateById(user);
+        saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", request.getRemoteAddr());
         return ApiResult.success(new LoginVO(jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole()), user.getRole(), user.getUsername()));
+    }
+
+    @GetMapping("/oauth/{provider}/url")
+    public ApiResult<Map<String, String>> oauthUrl(@PathVariable String provider) {
+        if (!"wechat".equals(provider) && !"qq".equals(provider)) throw new BusinessException("不支持的第三方平台");
+        Map<String, String> result = new HashMap<>();
+        result.put("provider", provider);
+        result.put("authorizeUrl", "/api/auth/oauth/" + provider + "/callback?code=demo-code");
+        result.put("tip", "当前为企业级预留接口，待接入真实OAuth");
+        return ApiResult.success(result);
     }
 
     @GetMapping("/userInfo")

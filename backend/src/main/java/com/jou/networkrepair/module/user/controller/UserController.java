@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
+import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -25,10 +26,12 @@ public class UserController {
 
     @GetMapping("/page")
     public ApiResult<Page<SysUser>> page(@RequestParam Long current, @RequestParam Long size,
+                                         @RequestParam(required = false) String employeeNo,
                                          @RequestParam(required = false) String username,
                                          @RequestParam(required = false) String role,
                                          @RequestParam(required = false) String phone) {
         LambdaQueryWrapper<SysUser> qw = new LambdaQueryWrapper<SysUser>()
+                .like(employeeNo != null && !employeeNo.isEmpty(), SysUser::getEmployeeNo, employeeNo)
                 .like(username != null && !username.isEmpty(), SysUser::getUsername, username)
                 .eq(role != null && !role.isEmpty(), SysUser::getRole, role)
                 .like(phone != null && !phone.isEmpty(), SysUser::getPhone, phone)
@@ -39,6 +42,7 @@ public class UserController {
     @PostMapping
     @Loggable(module = "通用", operationType = "新增", operationDesc = "新增数据")
     public ApiResult<Void> add(@RequestBody @Validated SysUser user) {
+        checkEmployeeNoUnique(user.getEmployeeNo(), null);
         user.setPassword(passwordEncoder.encode(user.getPassword() == null ? "123456" : user.getPassword()));
         user.setCreateTime(LocalDateTime.now()); user.setUpdateTime(LocalDateTime.now());
         userMapper.insert(user);
@@ -48,6 +52,7 @@ public class UserController {
     @PutMapping("/{id}")
     @Loggable(module = "通用", operationType = "修改", operationDesc = "修改数据")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody @Validated SysUser req) {
+        checkEmployeeNoUnique(req.getEmployeeNo(), id);
         req.setId(id); req.setUpdateTime(LocalDateTime.now()); req.setPassword(null);
         userMapper.updateById(req);
         return ApiResult.success("修改成功", null);
@@ -73,5 +78,13 @@ public class UserController {
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
     public ApiResult<List<SysUser>> listByRole(@RequestParam String role) {
         return ApiResult.success(userMapper.selectList(new LambdaQueryWrapper<SysUser>().eq(SysUser::getRole, role).eq(SysUser::getStatus, 1)));
+    }
+
+    private void checkEmployeeNoUnique(String employeeNo, Long id) {
+        if (employeeNo == null || employeeNo.trim().isEmpty()) throw new BusinessException("工号不能为空");
+        SysUser exists = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmployeeNo, employeeNo));
+        if (exists != null && (id == null || !id.equals(exists.getId()))) {
+            throw new BusinessException("工号已存在");
+        }
     }
 }

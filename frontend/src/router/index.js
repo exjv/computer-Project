@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user'
 
 const routes = [
+  { path: '/portal', component: () => import('../views/auth/PortalView.vue') },
   { path: '/login', component: () => import('../views/auth/LoginView.vue') },
   { path: '/', component: () => import('../layout/MainLayout.vue'), children: [
     { path: '', component: () => import('../views/dashboard/HomeView.vue') },
@@ -18,8 +19,8 @@ const routes = [
 const router = createRouter({ history: createWebHistory(), routes })
 router.beforeEach(async (to) => {
   const store = useUserStore()
-  if (to.path === '/login') return true
-  if (!store.token) return '/login'
+  if (to.path === '/login' || to.path === '/portal') return true
+  if (!store.token) return '/portal'
   if (!store.userInfo.role) await store.fetchUserInfo()
   return true
 })

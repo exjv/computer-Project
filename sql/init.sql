@@ -4,13 +4,18 @@ USE network_repair;
 
 CREATE TABLE sys_user (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  employee_no VARCHAR(30) NOT NULL UNIQUE,
   username VARCHAR(50) NOT NULL UNIQUE,
   password VARCHAR(100) NOT NULL,
   real_name VARCHAR(50),
   phone VARCHAR(20),
   email VARCHAR(100),
+  department VARCHAR(100),
   role VARCHAR(20) NOT NULL,
   status TINYINT DEFAULT 1,
+  last_login_time DATETIME,
+  wx_open_id VARCHAR(100),
+  qq_open_id VARCHAR(100),
   create_time DATETIME,
   update_time DATETIME
 );
@@ -93,12 +98,13 @@ CREATE TABLE login_log (
   login_time DATETIME
 );
 
-INSERT INTO sys_user VALUES
-(1,'admin','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','系统管理员','13800000001','admin@campus.edu','admin',1,NOW(),NOW()),
-(2,'user1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','张三','13800000002','user1@campus.edu','user',1,NOW(),NOW()),
-(3,'user2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','李四','13800000003','user2@campus.edu','user',1,NOW(),NOW()),
-(4,'maint1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','王工','13800000004','m1@campus.edu','maintainer',1,NOW(),NOW()),
-(5,'maint2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','赵工','13800000005','m2@campus.edu','maintainer',1,NOW(),NOW());
+INSERT INTO sys_user
+(id,employee_no,username,password,real_name,phone,email,department,role,status,last_login_time,wx_open_id,qq_open_id,create_time,update_time) VALUES
+(1,'A2026001','admin','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','系统管理员','13800000001','admin@campus.edu','网络信息中心','admin',1,NULL,NULL,NULL,NOW(),NOW()),
+(2,'U2026001','user1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','张三','13800000002','user1@campus.edu','教务处','user',1,NULL,NULL,NULL,NOW(),NOW()),
+(3,'U2026002','user2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','李四','13800000003','user2@campus.edu','图书馆','user',1,NULL,NULL,NULL,NOW(),NOW()),
+(4,'M2026001','maint1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','王工','13800000004','m1@campus.edu','网络运维组','maintainer',1,NULL,NULL,NULL,NOW(),NOW()),
+(5,'M2026002','maint2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','赵工','13800000005','m2@campus.edu','网络运维组','maintainer',1,NULL,NULL,NULL,NOW(),NOW());
 
 INSERT INTO network_device VALUES
 (1,'DEV-001','核心交换机A','交换机','H3C S5560','10.0.0.1','00-11-22-33-44-01','信息楼机房','2021-03-12','正常','核心层设备',NOW(),NOW()),
