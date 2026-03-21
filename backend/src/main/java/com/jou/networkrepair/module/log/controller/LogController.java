@@ -15,12 +15,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jou.networkrepair.common.exception.BusinessException;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 
 @RestController
 @RequestMapping("/api/logs")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 public class LogController {
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final OperationLogMapper operationLogMapper;
     private final LoginLogMapper loginLogMapper;
     private final BusinessLogMapper businessLogMapper;
@@ -43,14 +49,27 @@ public class LogController {
                                                      @RequestParam(required = false) String actionType,
                                                      @RequestParam(required = false) String dateFrom,
                                                      @RequestParam(required = false) String dateTo) {
+        LocalDateTime from = parseDateTime(dateFrom, "dateFrom");
+        LocalDateTime to = parseDateTime(dateTo, "dateTo");
         LambdaQueryWrapper<BusinessLog> qw = new LambdaQueryWrapper<BusinessLog>()
                 .like(employeeNo != null && !employeeNo.isEmpty(), BusinessLog::getEmployeeNo, employeeNo)
                 .like(username != null && !username.isEmpty(), BusinessLog::getUsername, username)
                 .like(orderNo != null && !orderNo.isEmpty(), BusinessLog::getOrderNo, orderNo)
                 .eq(actionType != null && !actionType.isEmpty(), BusinessLog::getActionType, actionType)
-                .ge(dateFrom != null && !dateFrom.isEmpty(), BusinessLog::getCreateTime, dateFrom)
-                .le(dateTo != null && !dateTo.isEmpty(), BusinessLog::getCreateTime, dateTo)
+                .ge(from != null, BusinessLog::getCreateTime, from)
+                .le(to != null, BusinessLog::getCreateTime, to)
                 .orderByDesc(BusinessLog::getId);
         return ApiResult.success(businessLogMapper.selectPage(new Page<>(current, size), qw));
+    }
+
+    private LocalDateTime parseDateTime(String value, String fieldName) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(value, DATE_TIME_FORMATTER);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(fieldName + " 格式错误，应为 yyyy-MM-dd HH:mm:ss");
+        }
     }
 }
