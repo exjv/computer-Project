@@ -12,9 +12,17 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/users")
@@ -78,6 +86,48 @@ public class UserController {
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
     public ApiResult<List<SysUser>> listByRole(@RequestParam String role) {
         return ApiResult.success(userMapper.selectList(new LambdaQueryWrapper<SysUser>().eq(SysUser::getRole, role).eq(SysUser::getStatus, 1)));
+    }
+
+    @PostMapping("/import")
+    public ApiResult<String> importCsv(@RequestParam("file") MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) throw new BusinessException("导入文件不能为空");
+        int success = 0;
+        int skip = 0;
+        Set<String> roleSet = new HashSet<>(Arrays.asList("admin", "user", "maintainer"));
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            int lineNo = 0;
+            while ((line = reader.readLine()) != null) {
+                lineNo++;
+                if (lineNo == 1 && line.contains("employeeNo")) continue;
+                String[] arr = line.split(",", -1);
+                if (arr.length < 5) { skip++; continue; }
+                String employeeNo = arr[0].trim();
+                String username = arr[1].trim();
+                String realName = arr[2].trim();
+                String role = arr[3].trim();
+                String phone = arr[4].trim();
+                String email = arr.length > 5 ? arr[5].trim() : null;
+                if (employeeNo.isEmpty() || username.isEmpty() || realName.isEmpty() || !roleSet.contains(role)) { skip++; continue; }
+                if (!phone.isEmpty() && !phone.matches("^1\\d{10}$")) { skip++; continue; }
+                if (userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmployeeNo, employeeNo)) != null) { skip++; continue; }
+                if (userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username)) != null) { skip++; continue; }
+                SysUser user = new SysUser();
+                user.setEmployeeNo(employeeNo);
+                user.setUsername(username);
+                user.setRealName(realName);
+                user.setRole(role);
+                user.setPhone(phone.isEmpty() ? null : phone);
+                user.setEmail(email == null || email.isEmpty() ? null : email);
+                user.setStatus(1);
+                user.setPassword(passwordEncoder.encode("123456"));
+                user.setCreateTime(LocalDateTime.now());
+                user.setUpdateTime(LocalDateTime.now());
+                userMapper.insert(user);
+                success++;
+            }
+        }
+        return ApiResult.success("导入完成：成功 " + success + " 条，跳过 " + skip + " 条", null);
     }
 
     private void checkEmployeeNoUnique(String employeeNo, Long id) {

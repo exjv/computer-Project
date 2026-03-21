@@ -30,3 +30,13 @@ export const uploadFileApi = file => {
     }
   })
 }
+export const importUsersApi = file => {
+  const form = new FormData()
+  form.append('file', file)
+  return axios.post('/api/users/import', form, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
