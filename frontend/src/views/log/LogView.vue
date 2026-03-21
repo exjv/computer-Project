@@ -16,6 +16,16 @@
           <el-form-item label="用户"><el-input v-model="bizQuery.username" /></el-form-item>
           <el-form-item label="工单号"><el-input v-model="bizQuery.orderNo" /></el-form-item>
           <el-form-item label="动作"><el-input v-model="bizQuery.actionType" /></el-form-item>
+          <el-form-item label="时间范围">
+            <el-date-picker
+              v-model="bizDateRange"
+              type="datetimerange"
+              range-separator="至"
+              start-placeholder="开始时间"
+              end-placeholder="结束时间"
+              value-format="YYYY-MM-DD HH:mm:ss"
+            />
+          </el-form-item>
           <el-button type="primary" @click="loadBiz">筛选</el-button>
           <el-button @click="resetBiz">重置</el-button>
         </el-form>
@@ -40,10 +50,26 @@ const active=ref('login')
 const loginList=ref([]),loginTotal=ref(0),loginPage=reactive({current:1,size:10})
 const opList=ref([]),opTotal=ref(0),opPage=reactive({current:1,size:10})
 const bizList=ref([]),bizTotal=ref(0),bizPage=reactive({current:1,size:10})
-const bizQuery=reactive({employeeNo:'',username:'',orderNo:'',actionType:''})
+const bizQuery=reactive({employeeNo:'',username:'',orderNo:'',actionType:'',dateFrom:'',dateTo:''})
+const bizDateRange=ref([])
 const loadLogin=async()=>{const r=await getPage('/logs/login/page',loginPage);loginList.value=r.records;loginTotal.value=r.total}
 const loadOp=async()=>{const r=await getPage('/logs/operation/page',opPage);opList.value=r.records;opTotal.value=r.total}
-const loadBiz=async()=>{const r=await getPage('/logs/business/page',{...bizPage,...bizQuery});bizList.value=r.records;bizTotal.value=r.total}
-const resetBiz=()=>{bizQuery.employeeNo='';bizQuery.username='';bizQuery.orderNo='';bizQuery.actionType='';loadBiz()}
+const loadBiz=async()=>{
+  bizQuery.dateFrom=bizDateRange.value?.[0] || ''
+  bizQuery.dateTo=bizDateRange.value?.[1] || ''
+  const r=await getPage('/logs/business/page',{...bizPage,...bizQuery})
+  bizList.value=r.records
+  bizTotal.value=r.total
+}
+const resetBiz=()=>{
+  bizQuery.employeeNo=''
+  bizQuery.username=''
+  bizQuery.orderNo=''
+  bizQuery.actionType=''
+  bizQuery.dateFrom=''
+  bizQuery.dateTo=''
+  bizDateRange.value=[]
+  loadBiz()
+}
 onMounted(async()=>{await loadLogin();await loadOp();await loadBiz()})
 </script>
