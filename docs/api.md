@@ -63,7 +63,7 @@
 ## LogController
 - GET `/api/logs/operation/page`
 - GET `/api/logs/login/page`
-- GET `/api/logs/business/page`
+- GET `/api/logs/business/page`（支持 `employeeNo/username/orderNo/actionType/dateFrom/dateTo`）
 
 ## PortalController
 - GET `/api/portal/home`

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 
 @RestController
 @RequestMapping("/api/logs")
@@ -35,7 +36,21 @@ public class LogController {
     }
 
     @GetMapping("/business/page")
-    public ApiResult<Page<BusinessLog>> businessPage(@RequestParam Long current, @RequestParam Long size) {
-        return ApiResult.success(businessLogMapper.selectPage(new Page<>(current, size), null));
+    public ApiResult<Page<BusinessLog>> businessPage(@RequestParam Long current, @RequestParam Long size,
+                                                     @RequestParam(required = false) String employeeNo,
+                                                     @RequestParam(required = false) String username,
+                                                     @RequestParam(required = false) String orderNo,
+                                                     @RequestParam(required = false) String actionType,
+                                                     @RequestParam(required = false) String dateFrom,
+                                                     @RequestParam(required = false) String dateTo) {
+        LambdaQueryWrapper<BusinessLog> qw = new LambdaQueryWrapper<BusinessLog>()
+                .like(employeeNo != null && !employeeNo.isEmpty(), BusinessLog::getEmployeeNo, employeeNo)
+                .like(username != null && !username.isEmpty(), BusinessLog::getUsername, username)
+                .like(orderNo != null && !orderNo.isEmpty(), BusinessLog::getOrderNo, orderNo)
+                .eq(actionType != null && !actionType.isEmpty(), BusinessLog::getActionType, actionType)
+                .ge(dateFrom != null && !dateFrom.isEmpty(), BusinessLog::getCreateTime, dateFrom)
+                .le(dateTo != null && !dateTo.isEmpty(), BusinessLog::getCreateTime, dateTo)
+                .orderByDesc(BusinessLog::getId);
+        return ApiResult.success(businessLogMapper.selectPage(new Page<>(current, size), qw));
     }
 }
