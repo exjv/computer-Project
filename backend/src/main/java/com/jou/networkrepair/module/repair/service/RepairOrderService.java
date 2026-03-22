@@ -19,7 +19,7 @@ public interface RepairOrderService {
     void create(RepairOrderCreateDTO dto, Long userId);
     void update(Long id, RepairOrder req);
     void delete(Long id);
-    void assign(Long id, RepairOrderAssignDTO dto);
+    void assign(Long id, RepairOrderAssignDTO dto, Long assignBy);
     void action(Long id, RepairOrderActionDTO dto, Long userId, String role);
     List<RepairOrderFlow> flows(Long id, Long userId, String role);
     void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role);

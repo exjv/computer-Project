@@ -46,8 +46,14 @@
       <el-form :model="form" label-width="100px">
         <el-form-item label="设备"><el-select v-model="form.deviceId"><el-option v-for="d in devices" :key="d.id" :label="d.deviceName" :value="d.id"/></el-select></el-form-item>
         <el-form-item label="故障标题"><el-input v-model="form.title"/></el-form-item>
+        <el-form-item label="故障类型"><el-input v-model="form.faultType"/></el-form-item>
+        <el-form-item label="联系方式"><el-input v-model="form.contactPhone"/></el-form-item>
+        <el-form-item label="报修地点"><el-input v-model="form.reportLocation"/></el-form-item>
         <el-form-item label="故障描述"><el-input type="textarea" v-model="form.description"/></el-form-item>
         <el-form-item label="优先级"><el-select v-model="form.priority"><el-option label="低" value="低"/><el-option label="中" value="中"/><el-option label="高" value="高"/></el-select></el-form-item>
+        <el-form-item label="影响范围"><el-switch v-model="form.affectWideAreaNetwork" :active-value="1" :inactive-value="0" active-text="影响大范围网络"/></el-form-item>
+        <el-form-item label="原预计完成"><el-date-picker v-model="form.originalExpectedFinishTime" value-format="YYYY-MM-DD HH:mm:ss" type="datetime"/></el-form-item>
+        <el-form-item label="备注"><el-input type="textarea" v-model="form.remark"/></el-form-item>
       </el-form>
       <template #footer><el-button @click="addDialog=false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>
@@ -78,7 +84,7 @@ const assignForm=reactive({id:null,assignMaintainerId:null}),statusForm=reactive
 const apiPath = computed(()=>isAdmin.value?'/repair-orders/page':'/repair-orders/my')
 const load = async()=>{const r=await getPage(apiPath.value,{...query,...page});list.value=r.records;total.value=r.total}
 const reset=()=>{Object.assign(query,{orderNo:'',title:'',priority:'',status:'',sortField:'id',sortOrder:'desc'});load()}
-const openAdd=()=>{editMode.value=false;Object.assign(form,{id:null,deviceId:'',title:'',description:'',priority:'中'});addDialog.value=true}
+const openAdd=()=>{editMode.value=false;Object.assign(form,{id:null,deviceId:'',title:'',description:'',priority:'中',faultType:'',contactPhone:'',reportLocation:'',affectWideAreaNetwork:0,remark:'',originalExpectedFinishTime:''});addDialog.value=true}
 const save=async()=>{if(editMode.value){await putApi(`/repair-orders/${form.id}`,form);ElMessage.success('修改成功')}else{await postApi('/repair-orders',form);ElMessage.success('提交成功')}addDialog.value=false;load()}
 const assign=(row)=>{assignForm.id=row.id;assignForm.assignMaintainerId=row.assignMaintainerId;assignDialog.value=true}
 const saveAssign=async()=>{await putApi(`/repair-orders/${assignForm.id}/assign`,assignForm);ElMessage.success('分配成功');assignDialog.value=false;load()}

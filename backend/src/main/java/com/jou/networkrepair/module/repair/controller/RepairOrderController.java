@@ -6,10 +6,13 @@ import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderActionDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderAttachmentDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
+import com.jou.networkrepair.module.system.entity.FileAttachment;
+import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +30,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RepairOrderController {
     private final RepairOrderService repairOrderService;
+    private final FileAttachmentMapper fileAttachmentMapper;
 
     @GetMapping("/page")
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
@@ -85,8 +89,8 @@ public class RepairOrderController {
     @PutMapping("/{id}/assign")
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
     @Loggable(module = "工单管理", operationType = "分配", operationDesc = "分配维修人员")
-    public ApiResult<Void> assign(@PathVariable Long id, @RequestBody @Validated RepairOrderAssignDTO dto) {
-        repairOrderService.assign(id, dto);
+    public ApiResult<Void> assign(@PathVariable Long id, @RequestBody @Validated RepairOrderAssignDTO dto, HttpServletRequest request) {
+        repairOrderService.assign(id, dto, (Long) request.getAttribute("userId"));
         return ApiResult.success("分配成功", null);
     }
 
@@ -128,5 +132,30 @@ public class RepairOrderController {
         data.put("count", assignedList.size());
         data.put("assignedList", assignedList);
         return ApiResult.success("自动分配完成", data);
+    }
+
+    @GetMapping("/{id}/attachments")
+    public ApiResult<List<FileAttachment>> attachments(@PathVariable Long id, HttpServletRequest request) {
+        repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success(fileAttachmentMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<FileAttachment>()
+                .eq(FileAttachment::getBusinessType, "REPAIR_ORDER")
+                .eq(FileAttachment::getBusinessId, id)
+                .orderByDesc(FileAttachment::getId)));
+    }
+
+    @PostMapping("/{id}/attachments")
+    public ApiResult<Void> addAttachment(@PathVariable Long id, @RequestBody @Validated RepairOrderAttachmentDTO dto, HttpServletRequest request) {
+        repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        FileAttachment attachment = new FileAttachment();
+        attachment.setBusinessType("REPAIR_ORDER");
+        attachment.setBusinessId(id);
+        attachment.setFileName(dto.getFileName());
+        attachment.setFileUrl(dto.getFileUrl());
+        attachment.setFileType(dto.getFileType());
+        attachment.setUploaderId((Long) request.getAttribute("userId"));
+        attachment.setUploadTime(java.time.LocalDateTime.now());
+        attachment.setRemark(dto.getRemark());
+        fileAttachmentMapper.insert(attachment);
+        return ApiResult.success("上传记录成功", null);
     }
 }

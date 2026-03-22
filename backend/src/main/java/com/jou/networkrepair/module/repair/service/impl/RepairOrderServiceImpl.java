@@ -97,6 +97,9 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setReporterDepartment(reporter.getDepartment());
         order.setReportLocation(dto.getReportLocation() != null && !dto.getReportLocation().trim().isEmpty() ? dto.getReportLocation() : existsDevice.getLocation());
         order.setAffectWideAreaNetwork(dto.getAffectWideAreaNetwork());
+        order.setRemark(dto.getRemark());
+        order.setOriginalExpectedFinishTime(dto.getOriginalExpectedFinishTime());
+        order.setExpectedFinishTime(dto.getOriginalExpectedFinishTime());
         order.setOrderNo(generateOrderNo());
         order.setStatus(RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel());
         order.setProgress(10);
@@ -131,7 +134,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void assign(Long id, RepairOrderAssignDTO dto) {
+    public void assign(Long id, RepairOrderAssignDTO dto, Long assignBy) {
         RepairOrder order = repairOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("工单不存在");
         if (!RepairOrderStatusEnum.PENDING_ASSIGN.getLabel().equals(order.getStatus())) throw new BusinessException("仅待分配工单允许分配");
@@ -140,6 +143,12 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             throw new BusinessException("维修人员无效或不可用");
         }
         String fromStatus = order.getStatus();
+        SysUser assignUser = assignBy == null ? null : userMapper.selectById(assignBy);
+        if (assignUser != null) {
+            order.setAssignBy(assignUser.getId());
+            order.setAssignByEmployeeNo(assignUser.getEmployeeNo());
+            order.setAssignByName(assignUser.getRealName());
+        }
         order.setAssignMaintainerId(dto.getAssignMaintainerId());
         order.setAssignMaintainerEmployeeNo(maintainer.getEmployeeNo());
         order.setAssignMaintainerName(maintainer.getRealName());
