@@ -87,16 +87,11 @@ CREATE TABLE device (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   device_code VARCHAR(50) NOT NULL COMMENT '设备编号（唯一）',
   device_name VARCHAR(100) NOT NULL,
-  device_type VARCHAR(50),
+  device_type VARCHAR(50) NOT NULL COMMENT '设备类型编码',
+  device_type_name VARCHAR(50),
   brand VARCHAR(100),
   model VARCHAR(100),
-  serial_number VARCHAR(100),
-  campus VARCHAR(100),
-  building_location VARCHAR(150),
-  enable_date DATE,
-  warranty_expiry_date DATE,
-  owner_name VARCHAR(50),
-  manage_department VARCHAR(100),
+  serial_no VARCHAR(100),
   brand_model VARCHAR(100),
   ip_address VARCHAR(50),
   mac_address VARCHAR(50),
@@ -106,16 +101,25 @@ CREATE TABLE device (
   office VARCHAR(100),
   location VARCHAR(150),
   purchase_date DATE,
-  status VARCHAR(20),
+  enable_date DATE,
+  warranty_expire_date DATE,
+  owner_user_id BIGINT,
+  owner_employee_no VARCHAR(30),
+  owner_name VARCHAR(50),
+  management_dept VARCHAR(100),
+  status VARCHAR(20) NOT NULL COMMENT 'DEVICE_NORMAL/DEVICE_FAULT/DEVICE_REPAIRING/DEVICE_DISABLED',
   last_fault_time DATETIME,
-  total_repair_requests INT DEFAULT 0,
+  total_repair_order_count INT DEFAULT 0,
   total_repair_count INT DEFAULT 0,
-  fault_reason_stats VARCHAR(500),
-  repair_approval_required TINYINT DEFAULT 0,
-  remark VARCHAR(255),
-  create_time DATETIME,
-  update_time DATETIME
-);
+  fault_reason_stats JSON,
+  remark VARCHAR(500),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_device_code (device_code),
+  KEY idx_device_type (device_type),
+  CONSTRAINT fk_device_type FOREIGN KEY (device_type) REFERENCES device_type(type_code),
+  CONSTRAINT fk_device_owner FOREIGN KEY (owner_user_id) REFERENCES `user`(id)
+) COMMENT='设备表';
 
 CREATE TABLE repair_order (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -287,25 +291,116 @@ CREATE TABLE login_log (
   ip VARCHAR(50),
   user_agent VARCHAR(255),
   login_status VARCHAR(20),
-  login_time DATETIME
-);
+  fail_reason VARCHAR(255),
+  login_time DATETIME NOT NULL,
+  CONSTRAINT fk_login_log_user FOREIGN KEY (user_id) REFERENCES `user`(id)
+) COMMENT='登录日志表';
 
-INSERT INTO sys_user
-(id,employee_no,username,password,real_name,phone,email,department,role,status,last_login_time,wx_open_id,qq_open_id,create_time,update_time) VALUES
-(1,'A2026001','admin','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','系统管理员','13800000001','admin@campus.edu','网络信息中心','admin',1,NULL,NULL,NULL,NOW(),NOW()),
-(2,'U2026001','user1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','张三','13800000002','user1@campus.edu','教务处','user',1,NULL,NULL,NULL,NOW(),NOW()),
-(3,'U2026002','user2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','李四','13800000003','user2@campus.edu','图书馆','user',1,NULL,NULL,NULL,NOW(),NOW()),
-(4,'M2026001','maint1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','王工','13800000004','m1@campus.edu','网络运维组','maintainer',1,NULL,NULL,NULL,NOW(),NOW()),
-(5,'M2026002','maint2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','赵工','13800000005','m2@campus.edu','网络运维组','maintainer',1,NULL,NULL,NULL,NOW(),NOW());
+CREATE TABLE file_attachment (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  business_type VARCHAR(50) NOT NULL,
+  business_id BIGINT NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_url VARCHAR(500) NOT NULL,
+  file_type VARCHAR(50),
+  file_size BIGINT,
+  file_hash VARCHAR(128),
+  uploader_id BIGINT,
+  uploader_employee_no VARCHAR(30),
+  upload_time DATETIME NOT NULL,
+  remark VARCHAR(255),
+  KEY idx_file_business (business_type, business_id),
+  CONSTRAINT fk_file_uploader FOREIGN KEY (uploader_id) REFERENCES `user`(id)
+) COMMENT='附件表';
 
-INSERT INTO network_device
-(id,device_code,device_name,device_type,brand,model,serial_number,campus,building_location,enable_date,warranty_expiry_date,owner_name,manage_department,brand_model,ip_address,mac_address,location,purchase_date,status,last_fault_time,total_repair_requests,total_repair_count,fault_reason_stats,repair_approval_required,remark,create_time,update_time) VALUES
-(1,'DEV-001','核心交换机A','交换机','H3C','S5560','SN-001','主校区','信息楼机房','2021-03-15','2027-03-12','王工','网络信息中心','H3C/S5560','10.0.0.1','00-11-22-33-44-01','信息楼机房','2021-03-12','正常',NULL,0,0,'',1,'核心层设备',NOW(),NOW()),
-(2,'DEV-002','出口路由器','路由器','Cisco','ISR4431','SN-002','主校区','网络中心','2020-06-15','2026-06-10','赵工','网络信息中心','Cisco/ISR4431','10.0.0.254','00-11-22-33-44-02','网络中心','2020-06-10','维修中',NOW(),1,0,'',1,'出口链路设备',NOW(),NOW()),
-(3,'DEV-003','防火墙1','防火墙','Hillstone','SG-6000','SN-003','主校区','网络中心','2021-08-15','2026-08-11','王工','网络信息中心','Hillstone/SG-6000','10.0.1.1','00-11-22-33-44-03','网络中心','2021-08-11','正常',NULL,0,0,'',1,'边界防护',NOW(),NOW()),
-(4,'DEV-004','图书馆AP-01','无线AP','Ruijie','RG-AP820','SN-004','主校区','图书馆三层','2022-01-07','2026-01-05','李工','图书馆信息部','Ruijie/RG-AP820','10.0.2.11','00-11-22-33-44-04','图书馆三层','2022-01-05','维修中',NOW(),1,0,'',0,'无线覆盖',NOW(),NOW()),
-(5,'DEV-005','教学楼汇聚交换机','交换机','Huawei','S5735','SN-005','东校区','教学楼A栋','2022-09-03','2027-09-01','赵工','网络信息中心','Huawei/S5735','10.0.3.1','00-11-22-33-44-05','教学楼A栋','2022-09-01','正常',NULL,0,0,'',0,'汇聚层设备',NOW(),NOW()),
-(6,'DEV-006','认证服务器','服务器','Dell','R740','SN-006','主校区','数据中心','2021-12-10','2026-12-09','王工','数据中心','Dell/R740','10.0.9.10','00-11-22-33-44-06','数据中心','2021-12-09','停用',NULL,0,0,'',1,'备用服务器',NOW(),NOW());
+CREATE TABLE third_party_bind (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  user_employee_no VARCHAR(30) NOT NULL,
+  provider VARCHAR(30) NOT NULL,
+  open_id VARCHAR(100) NOT NULL,
+  union_id VARCHAR(100),
+  bind_status VARCHAR(20) NOT NULL DEFAULT 'BOUND',
+  bind_time DATETIME NOT NULL,
+  unbind_time DATETIME,
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_provider_openid (provider, open_id),
+  CONSTRAINT fk_third_party_bind_user FOREIGN KEY (user_id) REFERENCES `user`(id)
+) COMMENT='第三方登录绑定表';
+
+CREATE TABLE dictionary (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  dict_type VARCHAR(50) NOT NULL,
+  dict_code VARCHAR(50) NOT NULL,
+  dict_label VARCHAR(100) NOT NULL,
+  dict_value VARCHAR(100) NOT NULL,
+  sort_no INT DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
+  remark VARCHAR(255),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_dict_type_code (dict_type, dict_code)
+) COMMENT='数据字典表';
+
+-- ======================
+-- 初始化基础数据（精简）
+-- ======================
+INSERT INTO `role` (id, role_code, role_name, role_status, remark, create_time, update_time) VALUES
+(1, 'admin', '系统管理员', 'ENABLED', '系统管理角色', NOW(), NOW()),
+(2, 'maintainer', '维修人员', 'ENABLED', '维修执行角色', NOW(), NOW()),
+(3, 'user', '报修用户', 'ENABLED', '普通报修用户', NOW(), NOW());
+
+INSERT INTO permission (id, permission_code, permission_name, permission_type, status, create_time, update_time) VALUES
+(1,'user:manage','用户管理','API','ENABLED',NOW(),NOW()),
+(2,'role:manage','角色管理','API','ENABLED',NOW(),NOW()),
+(3,'device:manage','设备管理','API','ENABLED',NOW(),NOW()),
+(4,'repair:order:approve','工单审批','API','ENABLED',NOW(),NOW()),
+(5,'repair:order:assign','工单分配','API','ENABLED',NOW(),NOW()),
+(6,'repair:order:view:all','工单全量查看','API','ENABLED',NOW(),NOW()),
+(7,'repair:order:view:self','工单本人查看','API','ENABLED',NOW(),NOW()),
+(8,'repair:order:create','发起报修','API','ENABLED',NOW(),NOW()),
+(9,'repair:record:write','维修记录填写','API','ENABLED',NOW(),NOW()),
+(10,'notice:publish','公告发布','API','ENABLED',NOW(),NOW()),
+(11,'statistics:view','统计分析查看','API','ENABLED',NOW(),NOW()),
+(12,'report:export','报表生成','API','ENABLED',NOW(),NOW()),
+(13,'log:operation:view','操作日志查看','API','ENABLED',NOW(),NOW()),
+(14,'log:business:view','业务日志查看','API','ENABLED',NOW(),NOW()),
+(15,'repair:supervise','维修流程监管','API','ENABLED',NOW(),NOW()),
+(16,'repair:order:accept','接单','API','ENABLED',NOW(),NOW()),
+(17,'repair:order:reject','拒单','API','ENABLED',NOW(),NOW()),
+(18,'repair:order:progress','维修进度更新','API','ENABLED',NOW(),NOW()),
+(19,'repair:attachment:upload','维修照片上传','API','ENABLED',NOW(),NOW()),
+(20,'repair:expected-finish:update','预计完成时间填写','API','ENABLED',NOW(),NOW()),
+(21,'repair:delay:apply','延期申请','API','ENABLED',NOW(),NOW()),
+(22,'repair:parts:apply','采购配件申请','API','ENABLED',NOW(),NOW()),
+(23,'repair:feedback:confirm','报修确认与评价','API','ENABLED',NOW(),NOW());
+
+INSERT INTO role_permission (role_id, permission_id, create_time) VALUES
+(1,1,NOW()),(1,2,NOW()),(1,3,NOW()),(1,4,NOW()),(1,5,NOW()),(1,6,NOW()),(1,8,NOW()),(1,10,NOW()),(1,11,NOW()),(1,12,NOW()),(1,13,NOW()),(1,14,NOW()),(1,15,NOW()),
+(2,7,NOW()),(2,9,NOW()),(2,16,NOW()),(2,17,NOW()),(2,18,NOW()),(2,19,NOW()),(2,20,NOW()),(2,21,NOW()),(2,22,NOW()),(2,23,NOW()),
+(3,7,NOW()),(3,8,NOW()),(3,23,NOW());
+
+INSERT INTO `user`
+(id, employee_no, username, password, real_name, phone, email, department, role, status, create_time, update_time) VALUES
+(1, 'A2026001', 'admin', '$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.', '系统管理员', '13800000001', 'admin@campus.edu', '网络信息中心', 'admin', 1, NOW(), NOW()),
+(2, 'U2026001', 'user1', '$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.', '张三', '13800000002', 'user1@campus.edu', '教务处', 'user', 1, NOW(), NOW()),
+(3, 'M2026001', 'maint1', '$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.', '王工', '13800000003', 'm1@campus.edu', '网络运维组', 'maintainer', 1, NOW(), NOW());
+
+INSERT INTO user_role (user_id, role_id, create_time) VALUES
+(1,1,NOW()),(2,3,NOW()),(3,2,NOW());
+
+INSERT INTO device_type (id, type_code, type_name, sort_no, status, create_time, update_time) VALUES
+(1,'SWITCH','交换机',1,'ENABLED',NOW(),NOW()),
+(2,'ROUTER','路由器',2,'ENABLED',NOW(),NOW()),
+(3,'FIREWALL','防火墙',3,'ENABLED',NOW(),NOW()),
+(4,'AP','无线AP',4,'ENABLED',NOW(),NOW()),
+(5,'SERVER','服务器',5,'ENABLED',NOW(),NOW());
+
+INSERT INTO device
+(id, device_code, device_name, device_type, device_type_name, brand, model, serial_no, location, purchase_date, enable_date, warranty_expire_date, owner_user_id, owner_employee_no, owner_name, management_dept, status, total_repair_order_count, total_repair_count, create_time, update_time)
+VALUES
+(1, 'DEV-001', '核心交换机A', 'SWITCH', '交换机', 'H3C', 'S5560', 'SN001', '信息楼机房', '2021-03-12', '2021-04-01', '2027-03-12', 3, 'M2026001', '王工', '网络运维组', '正常', 0, 0, NOW(), NOW());
 
 INSERT INTO repair_order
 (id, order_no, reporter_id, reporter_employee_no, reporter_name, contact_phone, reporter_department, report_location, device_id, device_code, device_name, device_type, title, fault_type, description, priority, affect_wide_area_network, report_time, status, progress, create_time, update_time)

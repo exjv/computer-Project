@@ -11,9 +11,6 @@ public class Notice {
     private Long id;
     private String title;
     private String content;
-    /** DRAFT/ONLINE/OFFLINE */
-    private String status;
-    private LocalDateTime publishTime;
     private Long publisherId;
     private String status;
     private Integer sortNo;

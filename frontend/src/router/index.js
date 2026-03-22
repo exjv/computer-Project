@@ -1,21 +1,23 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { ROUTE_ROLE_MAP } from '../constants/rbac'
 
 const routes = [
   { path: '/portal', component: () => import('../views/auth/PortalView.vue') },
   { path: '/login', component: () => import('../views/auth/LoginView.vue') },
   { path: '/', component: () => import('../layout/MainLayout.vue'), children: [
-    { path: '', component: () => import('../views/dashboard/HomeView.vue'), meta: { roles: ROUTE_ROLE_MAP['/'] } },
-    { path: 'users', component: () => import('../views/user/UserView.vue'), meta: { roles: ROUTE_ROLE_MAP['/users'] } },
-    { path: 'devices', component: () => import('../views/device/DeviceView.vue'), meta: { roles: ROUTE_ROLE_MAP['/devices'] } },
-    { path: 'devices/:id', component: () => import('../views/device/DeviceDetailView.vue'), meta: { roles: ROUTE_ROLE_MAP['/devices'] } },
-    { path: 'repair-orders', component: () => import('../views/repair/RepairOrderView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-orders'] } },
-    { path: 'repair-orders/:id', component: () => import('../views/repair/RepairOrderDetailView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-orders'] } },
-    { path: 'repair-orders/:id/progress', component: () => import('../views/repair/RepairOrderProgressView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-orders'] } },
-    { path: 'repair-records', component: () => import('../views/record/RepairRecordView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-records'] } },
-    { path: 'logs', component: () => import('../views/log/LogView.vue'), meta: { roles: ROUTE_ROLE_MAP['/logs'] } },
-    { path: 'profile', component: () => import('../views/profile/ProfileView.vue'), meta: { roles: ROUTE_ROLE_MAP['/profile'] } }
+    { path: '', component: () => import('../views/dashboard/HomeView.vue') },
+    { path: 'users', component: () => import('../views/user/UserView.vue'), meta: { permission: 'user:manage' } },
+    { path: 'devices', component: () => import('../views/device/DeviceView.vue'), meta: { permission: 'device:manage' } },
+    { path: 'devices/:id/profile', component: () => import('../views/device/DeviceDetailView.vue'), meta: { permission: 'device:manage' } },
+    { path: 'repair-orders', component: () => import('../views/repair/RepairOrderView.vue') },
+    { path: 'repair-apply', component: () => import('../views/repair/RepairApplyView.vue') },
+    { path: 'my-repairs', component: () => import('../views/repair/MyRepairRecordsView.vue') },
+    { path: 'my-repairs/:id/progress', component: () => import('../views/repair/RepairProgressView.vue') },
+    { path: 'maintainer/orders', component: () => import('../views/repair/MaintainerPendingOrdersView.vue') },
+    { path: 'repair-orders/:id', component: () => import('../views/repair/RepairOrderDetailView.vue') },
+    { path: 'repair-records', component: () => import('../views/record/RepairRecordView.vue'), meta: { permission: 'repair:record:write' } },
+    { path: 'logs', component: () => import('../views/log/LogView.vue'), meta: { permission: 'log:operation:view' } },
+    { path: 'profile', component: () => import('../views/profile/ProfileView.vue') }
   ] }
 ]
 
@@ -25,8 +27,8 @@ router.beforeEach(async (to) => {
   if (to.path === '/login' || to.path === '/portal') return true
   if (!store.token) return '/portal'
   if (!store.userInfo.role) await store.fetchUserInfo()
-  const targetRoles = to.meta.roles || []
-  if (targetRoles.length && !store.hasAnyRole(targetRoles)) return '/'
+  const permission = to.meta?.permission
+  if (permission && !store.hasPermission(permission)) return '/'
   return true
 })
 export default router

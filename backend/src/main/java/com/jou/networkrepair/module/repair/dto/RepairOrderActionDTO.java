@@ -16,11 +16,13 @@ public class RepairOrderActionDTO {
     @Min(value = 0, message = "进度不能小于0")
     @Max(value = 100, message = "进度不能大于100")
     private Integer progress;
-    private Long assignMaintainerId;
-    private String delayedExpectFinishTime;
-    private String scenePhotoUrls;
-    private String handleDescription;
-    private String partsRequirement;
+    @Min(value = 1, message = "满意度最低为1")
+    @Max(value = 5, message = "满意度最高为5")
     private Integer satisfactionScore;
-    private String feedback;
+    @Size(max = 500, message = "反馈意见不能超过500字")
+    private String feedbackContent;
+    private LocalDateTime expectedFinishTime;
+    private LocalDateTime delayedExpectedFinishTime;
+    @Size(max = 500, message = "配件说明不能超过500字")
+    private String partsDescription;
 }

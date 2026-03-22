@@ -15,7 +15,6 @@ import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
-import com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,5 +47,6 @@ public interface RepairOrderService {
     Page<Map<String, Object>> lowSatisfactionOrders(Long current, Long size, Integer threshold);
     Page<Map<String, Object>> unresolvedFeedbackOrders(Long current, Long size);
     List<DispatchResultVO> autoDispatch();
-    List<MaintainerRecommendVO> recommendMaintainers(Long orderId);
+    List<AssignmentRecommendationVO> recommendMaintainers(Long id, Long userId, String role);
+    RepairEstimateVO estimateFinishTime(Long id, Long userId, String role);
 }

@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Component
@@ -18,12 +17,9 @@ public class JwtUtil {
     @Value("${jwt.expire}")
     private Long expire;
 
-    public String generateToken(Long userId, String username, String role, List<String> roles) {
+    public String generateToken(Long userId, String username, String role) {
         Map<String, Object> map = new HashMap<>();
-        map.put("userId", userId);
-        map.put("username", username);
-        map.put("role", role);
-        map.put("roles", roles);
+        map.put("userId", userId); map.put("username", username); map.put("role", role);
         Date now = new Date();
         return Jwts.builder().setClaims(map).setIssuedAt(now)
                 .setExpiration(new Date(now.getTime() + expire * 1000))
