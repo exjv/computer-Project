@@ -25,12 +25,26 @@ CREATE TABLE network_device (
   device_code VARCHAR(50) NOT NULL UNIQUE,
   device_name VARCHAR(100) NOT NULL,
   device_type VARCHAR(50),
+  brand VARCHAR(100),
+  model VARCHAR(100),
+  serial_number VARCHAR(100),
+  campus VARCHAR(100),
+  building_location VARCHAR(150),
+  enable_date DATE,
+  warranty_expiry_date DATE,
+  owner_name VARCHAR(50),
+  manage_department VARCHAR(100),
   brand_model VARCHAR(100),
   ip_address VARCHAR(50),
   mac_address VARCHAR(50),
   location VARCHAR(100),
   purchase_date DATE,
   status VARCHAR(20),
+  last_fault_time DATETIME,
+  total_repair_requests INT DEFAULT 0,
+  total_repair_count INT DEFAULT 0,
+  fault_reason_stats VARCHAR(500),
+  repair_approval_required TINYINT DEFAULT 0,
   remark VARCHAR(255),
   create_time DATETIME,
   update_time DATETIME
@@ -128,13 +142,14 @@ INSERT INTO sys_user
 (4,'M2026001','maint1','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','王工','13800000004','m1@campus.edu','网络运维组','maintainer',1,NULL,NULL,NULL,NOW(),NOW()),
 (5,'M2026002','maint2','$2a$12$BbAoUM7.Zv67b60.4iJ35.budKRVsjdgu1VHLb0sHiWAseMRUYFO.','赵工','13800000005','m2@campus.edu','网络运维组','maintainer',1,NULL,NULL,NULL,NOW(),NOW());
 
-INSERT INTO network_device VALUES
-(1,'DEV-001','核心交换机A','交换机','H3C S5560','10.0.0.1','00-11-22-33-44-01','信息楼机房','2021-03-12','正常','核心层设备',NOW(),NOW()),
-(2,'DEV-002','出口路由器','路由器','Cisco ISR4431','10.0.0.254','00-11-22-33-44-02','网络中心','2020-06-10','故障','出口链路设备',NOW(),NOW()),
-(3,'DEV-003','防火墙1','防火墙','Hillstone SG-6000','10.0.1.1','00-11-22-33-44-03','网络中心','2021-08-11','正常','边界防护',NOW(),NOW()),
-(4,'DEV-004','图书馆AP-01','无线AP','Ruijie RG-AP820','10.0.2.11','00-11-22-33-44-04','图书馆三层','2022-01-05','维修中','无线覆盖',NOW(),NOW()),
-(5,'DEV-005','教学楼汇聚交换机','交换机','Huawei S5735','10.0.3.1','00-11-22-33-44-05','教学楼A栋','2022-09-01','正常','汇聚层设备',NOW(),NOW()),
-(6,'DEV-006','认证服务器','服务器','Dell R740','10.0.9.10','00-11-22-33-44-06','数据中心','2021-12-09','停用','备用服务器',NOW(),NOW());
+INSERT INTO network_device
+(id,device_code,device_name,device_type,brand,model,serial_number,campus,building_location,enable_date,warranty_expiry_date,owner_name,manage_department,brand_model,ip_address,mac_address,location,purchase_date,status,last_fault_time,total_repair_requests,total_repair_count,fault_reason_stats,repair_approval_required,remark,create_time,update_time) VALUES
+(1,'DEV-001','核心交换机A','交换机','H3C','S5560','SN-001','主校区','信息楼机房','2021-03-15','2027-03-12','王工','网络信息中心','H3C/S5560','10.0.0.1','00-11-22-33-44-01','信息楼机房','2021-03-12','正常',NULL,0,0,'',1,'核心层设备',NOW(),NOW()),
+(2,'DEV-002','出口路由器','路由器','Cisco','ISR4431','SN-002','主校区','网络中心','2020-06-15','2026-06-10','赵工','网络信息中心','Cisco/ISR4431','10.0.0.254','00-11-22-33-44-02','网络中心','2020-06-10','维修中',NOW(),1,0,'',1,'出口链路设备',NOW(),NOW()),
+(3,'DEV-003','防火墙1','防火墙','Hillstone','SG-6000','SN-003','主校区','网络中心','2021-08-15','2026-08-11','王工','网络信息中心','Hillstone/SG-6000','10.0.1.1','00-11-22-33-44-03','网络中心','2021-08-11','正常',NULL,0,0,'',1,'边界防护',NOW(),NOW()),
+(4,'DEV-004','图书馆AP-01','无线AP','Ruijie','RG-AP820','SN-004','主校区','图书馆三层','2022-01-07','2026-01-05','李工','图书馆信息部','Ruijie/RG-AP820','10.0.2.11','00-11-22-33-44-04','图书馆三层','2022-01-05','维修中',NOW(),1,0,'',0,'无线覆盖',NOW(),NOW()),
+(5,'DEV-005','教学楼汇聚交换机','交换机','Huawei','S5735','SN-005','东校区','教学楼A栋','2022-09-03','2027-09-01','赵工','网络信息中心','Huawei/S5735','10.0.3.1','00-11-22-33-44-05','教学楼A栋','2022-09-01','正常',NULL,0,0,'',0,'汇聚层设备',NOW(),NOW()),
+(6,'DEV-006','认证服务器','服务器','Dell','R740','SN-006','主校区','数据中心','2021-12-10','2026-12-09','王工','数据中心','Dell/R740','10.0.9.10','00-11-22-33-44-06','数据中心','2021-12-09','停用',NULL,0,0,'',1,'备用服务器',NOW(),NOW());
 
 INSERT INTO repair_order
 (id,order_no,device_id,reporter_id,title,description,priority,status,assign_maintainer_id,progress,report_time,audit_time,audit_by,assign_time,accept_time,start_repair_time,expected_finish_time,finish_time,confirm_time,satisfaction_score,feedback,close_reason,create_time,update_time) VALUES
@@ -145,11 +160,11 @@ INSERT INTO repair_order
 (5,'RO202406010005',3,2,'防火墙策略异常','部分系统无法访问','低','审核驳回',NULL,0,NOW(),NOW(),1,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'信息不足，需补充日志截图',NOW(),NOW());
 
 INSERT INTO repair_order_flow (repair_order_id,from_status,to_status,action,operator_id,operator_role,remark,create_time) VALUES
-(1,NULL,'已提交','SUBMIT',2,'user','用户提交工单',NOW()),
-(1,'已提交','审核通过','ADMIN_APPROVE',1,'admin','审核通过',NOW()),
+(1,NULL,'已提交/待审核','SUBMIT',2,'user','用户提交工单',NOW()),
+(1,'已提交/待审核','审核通过','ADMIN_APPROVE',1,'admin','审核通过',NOW()),
 (1,'审核通过','待分配','ADMIN_TO_ASSIGN',1,'admin','进入待分配',NOW()),
-(2,NULL,'已提交','SUBMIT',3,'user','用户提交工单',NOW()),
-(2,'已提交','审核通过','ADMIN_APPROVE',1,'admin','审核通过',NOW()),
+(2,NULL,'已提交/待审核','SUBMIT',3,'user','用户提交工单',NOW()),
+(2,'已提交/待审核','审核通过','ADMIN_APPROVE',1,'admin','审核通过',NOW()),
 (2,'审核通过','待分配','ADMIN_TO_ASSIGN',1,'admin','进入待分配',NOW()),
 (2,'待分配','待接单','ADMIN_ASSIGN',1,'admin','分配给王工',NOW());
 
