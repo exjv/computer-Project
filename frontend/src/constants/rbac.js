@@ -38,7 +38,6 @@ export const MENU_CONFIG = [
   { path: '/devices', label: '设备管理', anyPerm: ['devices:manage', 'devices:view'] },
   { path: '/repair-orders', label: '报修工单', anyPerm: ['repair:all:view', 'repair:assigned:view', 'repair:my:view'] },
   { path: '/repair-records', label: '维修记录', perm: 'repair:record:view' },
-  { path: '/notices', label: '公告管理', anyPerm: ['notice:manage', 'notice:view'] },
   { path: '/logs', label: '日志管理', perm: 'log:view' },
   { path: '/profile', label: '个人中心' }
 ]
