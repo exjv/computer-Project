@@ -58,7 +58,27 @@
       <template #footer><el-button @click="addDialog=false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="assignDialog" :title="assignMode==='assign' ? '分配维修人员' : '改派维修人员'"><el-form :model="assignForm"><el-form-item label="维修人员"><el-select v-model="assignForm.assignMaintainerId"><el-option v-for="m in maintainers" :key="m.id" :label="m.realName+'('+m.username+')'" :value="m.id"/></el-select></el-form-item></el-form><template #footer><el-button @click="assignDialog=false">取消</el-button><el-button type="primary" @click="saveAssign">保存</el-button></template></el-dialog>
+    <el-dialog v-model="assignDialog" :title="assignMode==='assign' ? '分配维修人员' : '改派维修人员'" width="860px">
+      <el-alert type="info" :closable="false" title="系统按工单优先级+维修人员负载给出推荐，可手动调整" />
+      <el-table :data="recommendList" style="margin-top:10px" max-height="260">
+        <el-table-column prop="maintainerName" label="维修人员" width="120" />
+        <el-table-column prop="recommendationScore" label="推荐分" width="90" />
+        <el-table-column prop="unfinishedCount" label="未完成" width="80" />
+        <el-table-column prop="processingCount" label="处理中" width="80" />
+        <el-table-column prop="avgHandleHours" label="平均时长(h)" width="110" />
+        <el-table-column label="技能匹配" width="90"><template #default="s">{{ s.row.skillMatched ? '是' : '否' }}</template></el-table-column>
+        <el-table-column prop="reason" label="推荐原因" min-width="260" show-overflow-tooltip />
+        <el-table-column label="操作" width="90"><template #default="s"><el-button link type="primary" @click="assignForm.assignMaintainerId=s.row.maintainerId">选中</el-button></template></el-table-column>
+      </el-table>
+      <el-form :model="assignForm" style="margin-top:10px">
+        <el-form-item label="手动调整">
+          <el-select v-model="assignForm.assignMaintainerId" placeholder="请选择维修人员">
+            <el-option v-for="m in maintainers" :key="m.id" :label="m.realName+'('+m.username+')'" :value="m.id"/>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer><el-button @click="assignDialog=false">取消</el-button><el-button type="primary" @click="saveAssign">保存</el-button></template>
+    </el-dialog>
     <el-dialog v-model="statusDialog" title="修改工单状态"><el-form :model="statusForm"><el-form-item label="状态"><el-select v-model="statusForm.status"><el-option v-for="s in allStatus" :key="s" :label="s" :value="s"/></el-select></el-form-item></el-form><template #footer><el-button @click="statusDialog=false">取消</el-button><el-button type="primary" @click="saveStatus">保存</el-button></template></el-dialog>
     <el-dialog v-model="detailDialog" title="工单详情" width="860px">
       <el-descriptions :column="2" border>
@@ -93,7 +113,7 @@ const isMaintainer = computed(()=>role.value==='maintainer')
 const pageTitle = computed(()=>isAdmin.value?'工单管理':(isUser.value?'我的报修':'我的工单'))
 const allStatus = ['待提交','已提交/待审核','审核通过','审核驳回','待分配','已分配','待接单','维修人员已接单','维修中','待采购/待配件','申请延期中','延期已批准','待验收/待确认','已完成','已关闭','已取消']
 const query=reactive({orderNo:'',title:'',priority:'',status:''}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
-const devices=ref([]),maintainers=ref([])
+const devices=ref([]),maintainers=ref([]),recommendList=ref([])
 const addDialog=ref(false),assignDialog=ref(false),statusDialog=ref(false),detailDialog=ref(false),editMode=ref(false)
 const assignMode=ref('assign')
 const form=reactive({id:null,deviceId:'',title:'',description:'',priority:'中'})
@@ -106,7 +126,7 @@ const reset=()=>{Object.assign(query,{orderNo:'',title:'',priority:'',status:''}
 const openAdd=()=>{editMode.value=false;Object.assign(form,{id:null,deviceId:'',title:'',description:'',priority:'中'});addDialog.value=true}
 const edit=(row)=>{editMode.value=true;Object.assign(form,row);addDialog.value=true}
 const save=async()=>{if(editMode.value){await putApi(`/repair-orders/${form.id}`,form);ElMessage.success('修改成功')}else{await postApi('/repair-orders',form);ElMessage.success('提交成功')}addDialog.value=false;load()}
-const assign=(row)=>{assignMode.value='assign';assignForm.id=row.id;assignForm.assignMaintainerId=row.assignMaintainerId;assignDialog.value=true}
+const assign=async(row)=>{assignMode.value='assign';assignForm.id=row.id;assignForm.assignMaintainerId=row.assignMaintainerId;recommendList.value=await getPage(`/repair-orders/${row.id}/recommend-maintainers`);assignDialog.value=true}
 const saveAssign=async()=>{
   if (!assignForm.assignMaintainerId) return ElMessage.warning('请选择维修人员')
   if (assignMode.value === 'assign') {
@@ -153,6 +173,6 @@ const canAction = (row, action) => {
   if (action === 'USER_CONFIRM_RESOLVED' || action === 'USER_CONFIRM_UNRESOLVED') return can('repair:confirm') && row.status === '待验收/待确认'
   return false
 }
-const reassign = async (row) => { assignMode.value='reassign'; assignForm.id=row.id; assignForm.assignMaintainerId=row.assignMaintainerId; assignDialog.value=true }
+const reassign = async (row) => { assignMode.value='reassign'; assignForm.id=row.id; assignForm.assignMaintainerId=row.assignMaintainerId; recommendList.value=await getPage(`/repair-orders/${row.id}/recommend-maintainers`); assignDialog.value=true }
 onMounted(async()=>{await load();const d=await getPage('/devices/page',{current:1,size:100});devices.value=d.records||[];if(isAdmin.value){maintainers.value=await getPage('/users/list-by-role',{role:'maintainer'})}})
 </script>

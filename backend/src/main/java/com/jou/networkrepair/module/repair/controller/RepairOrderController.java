@@ -83,6 +83,13 @@ public class RepairOrderController {
         return ApiResult.success("删除成功", null);
     }
 
+
+    @GetMapping("/{id}/recommend-maintainers")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO>> recommendMaintainers(@PathVariable Long id) {
+        return ApiResult.success(repairOrderService.recommendMaintainers(id));
+    }
+
     @PutMapping("/{id}/assign")
     @PreAuthorize("hasRole('ADMIN')")
     @Loggable(module = "工单管理", operationType = "分配", operationDesc = "分配维修人员")

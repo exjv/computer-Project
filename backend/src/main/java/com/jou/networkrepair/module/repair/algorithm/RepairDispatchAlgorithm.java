@@ -12,35 +12,27 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.PriorityQueue;
 
-/**
- * 基于优先级-负载均衡的校园网络故障工单智能调度算法。
- * 1) 对待分配工单计算紧急度评分，采用最大堆保证每次优先取最高分工单。
- * 2) 对维修人员使用综合负载值，选择当前最空闲人员。
- *
- * 时间复杂度：构建堆 O(n log n)，每次分配选最小负载 O(m)，总计约 O(n log n + n*m)。
- * 空间复杂度：堆与映射 O(n+m)。
- */
 @Component
 public class RepairDispatchAlgorithm {
 
-    /** 系数可作为论文中的可调参数。 */
-    private static final double A = 0.35D; // priority
-    private static final double B = 0.30D; // device level
-    private static final double C = 0.20D; // waiting time
-    private static final double D = 0.15D; // location level
+    private static final double A = 0.30D; // 紧急程度
+    private static final double B = 0.25D; // 设备重要性
+    private static final double C = 0.20D; // 等待时长
+    private static final double D = 0.15D; // 影响范围
+    private static final double E = 0.10D; // 位置权重
 
-    private static final double X = 0.40D; // 未完成工单数权重
-    private static final double Y = 0.60D; // 正在处理中工单数权重
+    private static final double X = 0.30D; // 未完成工单数
+    private static final double Y = 0.30D; // 处理中任务数
+    private static final double Z = 0.25D; // 历史平均处理时长
+    private static final double K = 0.15D; // 技能匹配惩罚
 
-    /**
-     * Score(order) = a*PriorityWeight + b*DeviceWeight + c*WaitWeight + d*LocationWeight
-     */
     public double calcPriorityScore(RepairOrder order, NetworkDevice device) {
         double priorityWeight = PriorityWeightEnum.from(order.getPriority());
         double deviceWeight = estimateDeviceWeight(device);
         double waitWeight = estimateWaitWeight(order.getReportTime());
+        double impactWeight = estimateImpactWeight(order.getDescription());
         double locationWeight = estimateLocationWeight(device == null ? null : device.getLocation());
-        return A * priorityWeight + B * deviceWeight + C * waitWeight + D * locationWeight;
+        return A * priorityWeight + B * deviceWeight + C * waitWeight + D * impactWeight + E * locationWeight;
     }
 
     public PriorityQueue<RepairOrder> buildMaxHeap(Iterable<RepairOrder> orders, Map<Long, NetworkDevice> deviceMap) {
@@ -53,9 +45,10 @@ public class RepairDispatchAlgorithm {
         return maxHeap;
     }
 
-    /** 综合负载值：Load(user)=x*未完成+y*处理中 */
-    public double calcMaintainerLoad(long unfinishedCount, long processingCount) {
-        return X * unfinishedCount + Y * processingCount;
+    public double calcMaintainerLoad(long unfinishedCount, long processingCount, double avgHandleHours, boolean skillMatched) {
+        double avgHoursScore = Math.min(100D, Math.max(0D, avgHandleHours));
+        double skillPenalty = skillMatched ? 0D : 100D;
+        return X * unfinishedCount + Y * processingCount + Z * avgHoursScore + K * skillPenalty;
     }
 
     private double estimateDeviceWeight(NetworkDevice device) {
@@ -70,7 +63,7 @@ public class RepairDispatchAlgorithm {
     private double estimateWaitWeight(LocalDateTime reportTime) {
         if (reportTime == null) return 0D;
         long minutes = Math.max(0, Duration.between(reportTime, LocalDateTime.now()).toMinutes());
-        return Math.min(100D, minutes / 10.0D);
+        return Math.min(100D, minutes / 8.0D);
     }
 
     private double estimateLocationWeight(String location) {
@@ -80,5 +73,14 @@ public class RepairDispatchAlgorithm {
         if (location.contains("教学楼") || location.contains("图书馆")) return LocationWeightEnum.TEACHING_BUILDING.weight();
         if (location.contains("宿舍")) return LocationWeightEnum.DORMITORY.weight();
         return LocationWeightEnum.OTHER.weight();
+    }
+
+    private double estimateImpactWeight(String description) {
+        if (description == null || description.trim().isEmpty()) return 30D;
+        String d = description.toLowerCase();
+        if (d.contains("全网") || d.contains("大面积") || d.contains("整栋") || d.contains("核心")) return 100D;
+        if (d.contains("楼层") || d.contains("教学") || d.contains("机房")) return 80D;
+        if (d.contains("宿舍") || d.contains("办公室") || d.contains("多用户")) return 60D;
+        return 40D;
     }
 }

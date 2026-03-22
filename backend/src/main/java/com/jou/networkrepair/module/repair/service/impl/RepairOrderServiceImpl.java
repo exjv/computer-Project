@@ -16,6 +16,7 @@ import com.jou.networkrepair.module.repair.mapper.RepairOrderFlowMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
+import com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -340,10 +341,10 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
         while (!maxHeap.isEmpty()) {
             RepairOrder order = maxHeap.poll();
-            Long targetMaintainerId = unfinishedCountMap.keySet().stream()
-                    .min(Comparator.comparingDouble(id -> repairDispatchAlgorithm.calcMaintainerLoad(
-                            unfinishedCountMap.get(id), processingCountMap.get(id))))
-                    .orElseThrow(() -> new BusinessException("未找到可分配维修人员"));
+            List<MaintainerRecommendVO> recommends = recommendMaintainers(order.getId());
+            if (recommends.isEmpty()) throw new BusinessException("未找到可分配维修人员");
+            MaintainerRecommendVO top = recommends.get(0);
+            Long targetMaintainerId = top.getMaintainerId();
 
             order.setAssignMaintainerId(targetMaintainerId);
             order.setAssignTime(LocalDateTime.now());
@@ -351,14 +352,102 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             order.setProgress(35);
             order.setUpdateTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
-            addFlow(order.getId(), "待分配", "待接单", "AUTO_ASSIGN", null, "system", "系统自动派单");
+            addFlow(order.getId(), "待分配", "待接单", "AUTO_ASSIGN", null, "system", top.getReason());
 
             unfinishedCountMap.put(targetMaintainerId, unfinishedCountMap.get(targetMaintainerId) + 1L);
             Double score = repairDispatchAlgorithm.calcPriorityScore(order, deviceMap.get(order.getDeviceId()));
             result.add(new DispatchResultVO(order.getOrderNo(), targetMaintainerId,
-                    maintainerNameMap.get(targetMaintainerId), score, "按照紧急度评分与负载均衡策略自动分配"));
+                    maintainerNameMap.get(targetMaintainerId), score, top.getReason()));
         }
         return result;
+    }
+
+
+    @Override
+    public List<MaintainerRecommendVO> recommendMaintainers(Long orderId) {
+        RepairOrder order = repairOrderMapper.selectById(orderId);
+        if (order == null) throw new BusinessException("工单不存在");
+        if (!Arrays.asList("待分配", "已分配", "待接单").contains(order.getStatus())) {
+            throw new BusinessException("当前状态不支持推荐分配");
+        }
+        NetworkDevice device = deviceMapper.selectById(order.getDeviceId());
+        double priorityScore = repairDispatchAlgorithm.calcPriorityScore(order, device);
+
+        List<SysUser> maintainers = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getRole, "maintainer")
+                .eq(SysUser::getStatus, 1));
+        List<MaintainerRecommendVO> list = new ArrayList<>();
+        for (SysUser m : maintainers) {
+            Long unfinished = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .notIn(RepairOrder::getStatus, Arrays.asList("已完成", "已关闭", "已取消")));
+            Long processing = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .in(RepairOrder::getStatus, Arrays.asList("维修人员已接单", "维修中", "待采购/待配件", "申请延期中", "延期已批准")));
+
+            Long hisCount = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .eq(RepairOrder::getStatus, "已完成")
+                    .isNotNull(RepairOrder::getAcceptTime)
+                    .isNotNull(RepairOrder::getFinishTime));
+            List<RepairOrder> doneOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .eq(RepairOrder::getStatus, "已完成")
+                    .isNotNull(RepairOrder::getAcceptTime)
+                    .isNotNull(RepairOrder::getFinishTime)
+                    .last("limit 30"));
+            double avgHours = 24D;
+            if (hisCount != null && hisCount > 0 && !doneOrders.isEmpty()) {
+                double sum = 0D;
+                for (RepairOrder d : doneOrders) {
+                    sum += Math.max(1, java.time.Duration.between(d.getAcceptTime(), d.getFinishTime()).toHours());
+                }
+                avgHours = sum / doneOrders.size();
+            }
+
+            boolean skillMatched = matchSkill(m, device);
+            double loadScore = repairDispatchAlgorithm.calcMaintainerLoad(
+                    unfinished == null ? 0L : unfinished,
+                    processing == null ? 0L : processing,
+                    avgHours,
+                    skillMatched);
+            double recommendationScore = priorityScore - loadScore;
+            String reason = buildRecommendReason(priorityScore, loadScore, unfinished, processing, avgHours, skillMatched, device);
+            list.add(MaintainerRecommendVO.builder()
+                    .maintainerId(m.getId())
+                    .maintainerName(m.getRealName())
+                    .priorityScore(priorityScore)
+                    .loadScore(loadScore)
+                    .recommendationScore(recommendationScore)
+                    .unfinishedCount(unfinished == null ? 0L : unfinished)
+                    .processingCount(processing == null ? 0L : processing)
+                    .avgHandleHours(avgHours)
+                    .skillMatched(skillMatched)
+                    .reason(reason)
+                    .build());
+        }
+        list.sort((a, b) -> Double.compare(b.getRecommendationScore(), a.getRecommendationScore()));
+        return list;
+    }
+
+    private boolean matchSkill(SysUser maintainer, NetworkDevice device) {
+        if (device == null) return true;
+        String tag = ((maintainer.getDepartment() == null ? "" : maintainer.getDepartment()) + " "
+                + (maintainer.getRole() == null ? "" : maintainer.getRole()) + " "
+                + (maintainer.getRealName() == null ? "" : maintainer.getRealName())).toLowerCase();
+        String type = (device.getDeviceType() == null ? "" : device.getDeviceType()).toLowerCase();
+        if (type.contains("防火墙") || type.contains("核心") || type.contains("路由")) return tag.contains("网络") || tag.contains("核心");
+        if (type.contains("交换") || type.contains("ap") || type.contains("无线")) return tag.contains("无线") || tag.contains("接入") || tag.contains("网络");
+        return true;
+    }
+
+    private String buildRecommendReason(double priorityScore, double loadScore, Long unfinished, Long processing,
+                                        double avgHours, boolean skillMatched, NetworkDevice device) {
+        return "优先级分=" + String.format("%.1f", priorityScore)
+                + "，负载分=" + String.format("%.1f", loadScore)
+                + "（未完成" + (unfinished == null ? 0 : unfinished) + "、处理中" + (processing == null ? 0 : processing)
+                + "、平均处理时长" + String.format("%.1f", avgHours) + "h、技能" + (skillMatched ? "匹配" : "不匹配") + "）"
+                + "；设备类型=" + (device == null ? "未知" : device.getDeviceType());
     }
 
     private String generateOrderNo() {
