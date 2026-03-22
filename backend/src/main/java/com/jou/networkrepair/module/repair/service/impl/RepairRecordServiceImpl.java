@@ -6,6 +6,7 @@ import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;
 import com.jou.networkrepair.module.repair.dto.RepairRecordDTO;
+import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairRecord;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
@@ -94,14 +95,14 @@ public class RepairRecordServiceImpl implements RepairRecordService {
         repairRecordMapper.insert(record);
 
         if (record.getIsResolved() != null && record.getIsResolved() == 1) {
-            order.setStatus("已完成");
+            order.setStatus(RepairOrderStatusEnum.FINISHED.getLabel());
             order.setFinishTime(LocalDateTime.now());
             NetworkDevice dev = new NetworkDevice();
             dev.setId(record.getDeviceId());
             dev.setStatus("正常");
             deviceMapper.updateById(dev);
         } else {
-            order.setStatus("处理中");
+            order.setStatus(RepairOrderStatusEnum.IN_REPAIR.getLabel());
         }
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(order);

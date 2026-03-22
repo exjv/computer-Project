@@ -34,8 +34,10 @@ public class RepairOrderController {
                                              @RequestParam(required = false) String status,
                                              @RequestParam(required = false) String title,
                                              @RequestParam(required = false) String orderNo,
-                                             @RequestParam(required = false) String priority) {
-        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority));
+                                             @RequestParam(required = false) String priority,
+                                             @RequestParam(required = false, defaultValue = "id") String sortField,
+                                             @RequestParam(required = false, defaultValue = "desc") String sortOrder) {
+        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, sortField, sortOrder));
     }
 
     @GetMapping("/my")
@@ -43,10 +45,12 @@ public class RepairOrderController {
                                            @RequestParam(required = false) String status,
                                            @RequestParam(required = false) String orderNo,
                                            @RequestParam(required = false) String priority,
+                                           @RequestParam(required = false, defaultValue = "id") String sortField,
+                                           @RequestParam(required = false, defaultValue = "desc") String sortOrder,
                                            HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         String role = (String) request.getAttribute("role");
-        return ApiResult.success(repairOrderService.myPage(current, size, status, orderNo, priority, userId, role));
+        return ApiResult.success(repairOrderService.myPage(current, size, status, orderNo, priority, userId, role, sortField, sortOrder));
     }
 
     @GetMapping("/{id}")
@@ -108,6 +112,11 @@ public class RepairOrderController {
     @GetMapping("/statistics")
     public ApiResult<Map<String, Object>> stats(HttpServletRequest request) {
         return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @GetMapping("/status-options")
+    public ApiResult<List<String>> statusOptions() {
+        return ApiResult.success(com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum.labels());
     }
 
     @PostMapping("/auto-dispatch")

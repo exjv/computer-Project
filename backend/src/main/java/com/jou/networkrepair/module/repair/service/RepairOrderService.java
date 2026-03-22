@@ -13,8 +13,8 @@ import java.util.List;
 import java.util.Map;
 
 public interface RepairOrderService {
-    Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority);
-    Page<RepairOrder> myPage(Long current, Long size, String status, String orderNo, String priority, Long userId, String role);
+    Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority, String sortField, String sortOrder);
+    Page<RepairOrder> myPage(Long current, Long size, String status, String orderNo, String priority, Long userId, String role, String sortField, String sortOrder);
     RepairOrder detail(Long id, Long userId, String role);
     void create(RepairOrderCreateDTO dto, Long userId);
     void update(Long id, RepairOrder req);

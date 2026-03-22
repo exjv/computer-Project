@@ -9,6 +9,7 @@ const routes = [
     { path: 'users', component: () => import('../views/user/UserView.vue'), meta: { permission: 'user:manage' } },
     { path: 'devices', component: () => import('../views/device/DeviceView.vue'), meta: { permission: 'device:manage' } },
     { path: 'repair-orders', component: () => import('../views/repair/RepairOrderView.vue') },
+    { path: 'repair-orders/:id', component: () => import('../views/repair/RepairOrderDetailView.vue') },
     { path: 'repair-records', component: () => import('../views/record/RepairRecordView.vue'), meta: { permission: 'repair:record:write' } },
     { path: 'logs', component: () => import('../views/log/LogView.vue'), meta: { permission: 'log:operation:view' } },
     { path: 'profile', component: () => import('../views/profile/ProfileView.vue') }
