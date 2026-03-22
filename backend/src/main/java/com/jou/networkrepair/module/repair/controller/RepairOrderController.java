@@ -11,6 +11,7 @@ import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
+import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.system.entity.FileAttachment;
 import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
@@ -103,6 +104,11 @@ public class RepairOrderController {
     @GetMapping("/{id}/flows")
     public ApiResult<List<RepairOrderFlow>> flows(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @GetMapping("/{id}/business-logs")
+    public ApiResult<List<BusinessLog>> businessLogs(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.businessLogs(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @PutMapping("/{id}/status")

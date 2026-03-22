@@ -9,6 +9,15 @@
         </div>
       </template>
 
+      <el-divider>工单状态时间轴</el-divider>
+      <el-steps :active="activeStep" finish-status="success" align-center>
+        <el-step v-for="(s, idx) in statusSteps" :key="s" :title="s">
+          <template #description>
+            <span v-if="idx === activeStep" style="color:#409EFF;font-weight:600">当前节点</span>
+          </template>
+        </el-step>
+      </el-steps>
+
       <el-divider>基本信息区</el-divider>
       <el-descriptions :column="2" border>
         <el-descriptions-item label="报修用户">{{ detail.reporterName || '-' }}</el-descriptions-item>
@@ -58,10 +67,29 @@
         </el-col>
       </el-row>
 
-      <el-divider>流程记录区</el-divider>
+      <el-divider>每一步处理记录</el-divider>
       <el-timeline>
         <el-timeline-item v-for="f in flows" :key="f.id" :timestamp="f.createTime">
-          {{ f.fromStatus || '开始' }} → {{ f.toStatus }} ｜ {{ f.action }} ｜ {{ f.remark || '无备注' }}
+          <el-card shadow="never">
+            <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <span><b>状态变化：</b>{{ f.fromStatus || '开始' }} → {{ f.toStatus || '-' }}</span>
+              <span><b>操作类型：</b>{{ f.operationType || f.action || '-' }}</span>
+            </div>
+            <div style="margin-top:6px"><b>操作人：</b>{{ f.operatorName || '-' }}（{{ f.operatorRole || '-' }}）</div>
+            <div style="margin-top:6px"><b>处理意见：</b>{{ f.remark || '无备注' }}</div>
+          </el-card>
+        </el-timeline-item>
+      </el-timeline>
+
+      <el-divider>消息/操作日志展示</el-divider>
+      <el-empty v-if="!businessLogs.length" description="暂无操作日志"/>
+      <el-timeline v-else>
+        <el-timeline-item v-for="l in businessLogs" :key="l.id" :timestamp="l.createTime" type="primary">
+          <el-card shadow="never">
+            <div><b>{{ l.action }}</b> ｜ {{ l.status || '-' }}</div>
+            <div style="margin-top:6px"><b>操作人：</b>{{ l.operatorName || '-' }}</div>
+            <div style="margin-top:6px"><b>说明：</b>{{ l.content || '-' }}</div>
+          </el-card>
         </el-timeline-item>
       </el-timeline>
 
@@ -90,16 +118,37 @@ const router = useRouter()
 const detail = ref({})
 const flows = ref([])
 const attachments = ref([])
+const businessLogs = ref([])
 const role = computed(() => useUserStore().userInfo.role)
 const isAdmin = computed(() => role.value === 'admin')
 const isMaintainer = computed(() => role.value === 'maintainer')
 const isUser = computed(() => role.value === 'user')
+const baseStatusSteps = [
+  '已提交/待审核',
+  '审核通过',
+  '待分配',
+  '待接单',
+  '维修人员已接单',
+  '维修中',
+  '待验收/待确认',
+  '已完成'
+]
+const statusSteps = computed(() => {
+  const current = detail.value.status
+  if (!current) return baseStatusSteps
+  return baseStatusSteps.includes(current) ? baseStatusSteps : [...baseStatusSteps, current]
+})
+const activeStep = computed(() => {
+  const idx = statusSteps.value.indexOf(detail.value.status)
+  return idx < 0 ? 0 : idx
+})
 
 const load = async () => {
   const id = route.params.id
   detail.value = await getPage(`/repair-orders/${id}`)
   flows.value = await getPage(`/repair-orders/${id}/flows`)
   attachments.value = await getPage(`/repair-orders/${id}/attachments`)
+  businessLogs.value = await getPage(`/repair-orders/${id}/business-logs`)
 }
 
 const doAction = async (action) => {

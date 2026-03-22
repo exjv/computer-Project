@@ -17,6 +17,8 @@ import com.jou.networkrepair.module.repair.mapper.RepairOrderFlowMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
+import com.jou.networkrepair.module.system.entity.BusinessLog;
+import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +41,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     private final UserMapper userMapper;
     private final RepairDispatchAlgorithm repairDispatchAlgorithm;
     private final RepairOrderFlowMapper repairOrderFlowMapper;
+    private final BusinessLogMapper businessLogMapper;
 
     @Override
     public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority, String sortField, String sortOrder) {
@@ -108,6 +111,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.insert(order);
         addFlow(order.getId(), null, RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel(), "SUBMIT", userId, "user", "用户提交报修工单");
+        addBusinessLog(order, "SUBMIT", userId, "user", null, RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel(), "用户提交报修工单");
 
         NetworkDevice device = new NetworkDevice();
         device.setId(order.getDeviceId());
@@ -157,7 +161,9 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setProgress(35);
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(order);
-        addFlow(order.getId(), fromStatus, RepairOrderStatusEnum.PENDING_ACCEPT.getLabel(), "ADMIN_ASSIGN", null, "admin", "管理员分配维修人员");
+        addFlow(order.getId(), fromStatus, RepairOrderStatusEnum.PENDING_ACCEPT.getLabel(), "ADMIN_ASSIGN", assignBy, "admin", "管理员分配维修人员");
+        addBusinessLog(order, "ADMIN_ASSIGN", assignBy, "admin", fromStatus, RepairOrderStatusEnum.PENDING_ACCEPT.getLabel(),
+                "分配给维修人员：" + maintainer.getRealName());
     }
 
     @Override
@@ -204,6 +210,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             order.setUpdateTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
             addFlow(order.getId(), RepairOrderStatusEnum.IN_REPAIR.getLabel(), RepairOrderStatusEnum.IN_REPAIR.getLabel(), action, userId, role, "进度更新至" + dto.getProgress() + "%");
+            addBusinessLog(order, action, userId, role, order.getStatus(), order.getStatus(), "进度更新至" + dto.getProgress() + "%");
         } else if ("MAINTAINER_FINISH".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
@@ -237,6 +244,16 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     }
 
     @Override
+    public List<BusinessLog> businessLogs(Long id, Long userId, String role) {
+        RepairOrder order = detail(id, userId, role);
+        if (order == null) throw new BusinessException("工单不存在");
+        return businessLogMapper.selectList(new LambdaQueryWrapper<BusinessLog>()
+                .eq(BusinessLog::getBusinessType, "REPAIR_ORDER")
+                .eq(BusinessLog::getBusinessNo, order.getOrderNo())
+                .orderByAsc(BusinessLog::getId));
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
         RepairOrder order = repairOrderMapper.selectById(id);
@@ -244,10 +261,13 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         if ("maintainer".equals(role) && !userId.equals(order.getAssignMaintainerId())) throw new BusinessException("仅可处理分配给自己的工单");
         if (!STATUS_SET.contains(dto.getStatus())) throw new BusinessException("无效工单状态");
         validateStatusTransition(order.getStatus(), dto.getStatus());
+        String fromStatus = order.getStatus();
         order.setStatus(dto.getStatus());
         if ("已完成".equals(dto.getStatus())) order.setFinishTime(LocalDateTime.now());
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(order);
+        addFlow(order.getId(), fromStatus, dto.getStatus(), "MANUAL_STATUS_UPDATE", userId, role, dto.getStatus());
+        addBusinessLog(order, "MANUAL_STATUS_UPDATE", userId, role, fromStatus, dto.getStatus(), "手工修改状态");
 
         if ("已完成".equals(dto.getStatus()) || "已关闭".equals(dto.getStatus())) {
             NetworkDevice device = new NetworkDevice();
@@ -330,6 +350,8 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             order.setUpdateTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
             addFlow(order.getId(), RepairOrderStatusEnum.PENDING_ASSIGN.getLabel(), RepairOrderStatusEnum.PENDING_ACCEPT.getLabel(), "AUTO_ASSIGN", null, "system", "系统自动派单");
+            addBusinessLog(order, "AUTO_ASSIGN", null, "system", RepairOrderStatusEnum.PENDING_ASSIGN.getLabel(),
+                    RepairOrderStatusEnum.PENDING_ACCEPT.getLabel(), "系统自动分配维修人员");
 
             unfinishedCountMap.put(targetMaintainerId, unfinishedCountMap.get(targetMaintainerId) + 1L);
             Double score = repairDispatchAlgorithm.calcPriorityScore(order, deviceMap.get(order.getDeviceId()));
@@ -386,6 +408,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(order);
         addFlow(order.getId(), from, toStatus, action, userId, role, remark);
+        addBusinessLog(order, action, userId, role, from, toStatus, remark);
     }
 
     private void addFlow(Long orderId, String fromStatus, String toStatus, String action, Long userId, String role, String remark) {
@@ -407,6 +430,27 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         flow.setRemark(remark);
         flow.setCreateTime(LocalDateTime.now());
         repairOrderFlowMapper.insert(flow);
+    }
+
+    private void addBusinessLog(RepairOrder order, String action, Long userId, String role, String fromStatus, String toStatus, String remark) {
+        BusinessLog log = new BusinessLog();
+        log.setBusinessType("REPAIR_ORDER");
+        log.setBusinessNo(order.getOrderNo());
+        log.setAction(action);
+        log.setOperatorId(userId);
+        if (userId != null) {
+            SysUser operator = userMapper.selectById(userId);
+            if (operator != null) {
+                log.setOperatorEmployeeNo(operator.getEmployeeNo());
+                log.setOperatorName(operator.getRealName());
+            }
+        }
+        log.setStatus(toStatus);
+        String safeRemark = remark == null || remark.trim().isEmpty() ? "无" : remark.trim();
+        log.setContent(String.format("状态：%s -> %s；角色：%s；处理意见：%s",
+                fromStatus == null ? "-" : fromStatus, toStatus == null ? "-" : toStatus, role == null ? "-" : role, safeRemark));
+        log.setCreateTime(LocalDateTime.now());
+        businessLogMapper.insert(log);
     }
 
     private void requireRole(String current, String expected) {

@@ -7,6 +7,7 @@ import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
+import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 
 import java.util.List;
@@ -22,6 +23,7 @@ public interface RepairOrderService {
     void assign(Long id, RepairOrderAssignDTO dto, Long assignBy);
     void action(Long id, RepairOrderActionDTO dto, Long userId, String role);
     List<RepairOrderFlow> flows(Long id, Long userId, String role);
+    List<BusinessLog> businessLogs(Long id, Long userId, String role);
     void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role);
     Map<String, Object> stats(Long userId, String role);
     List<DispatchResultVO> autoDispatch();
