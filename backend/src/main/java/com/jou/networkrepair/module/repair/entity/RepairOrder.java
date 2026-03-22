@@ -30,6 +30,10 @@ public class RepairOrder {
     private Integer satisfactionScore;
     private String feedback;
     private String closeReason;
+    private String scenePhotoUrls;
+    private String handleDescription;
+    private String delayReason;
+    private String partsRequirement;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }
