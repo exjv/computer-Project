@@ -207,11 +207,18 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             checkStatus(order.getStatus(), RepairOrderStatusEnum.PENDING_ACCEPT.getLabel());
             order.setAcceptTime(LocalDateTime.now());
             moveStatus(order, RepairOrderStatusEnum.MAINTAINER_ACCEPTED.getLabel(), 45, userId, role, dto.getRemark(), action);
+        } else if ("MAINTAINER_REJECT".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), RepairOrderStatusEnum.PENDING_ACCEPT.getLabel());
+            if (dto.getRemark() == null || dto.getRemark().trim().isEmpty()) throw new BusinessException("拒单必须填写原因");
+            moveStatus(order, RepairOrderStatusEnum.PENDING_ASSIGN.getLabel(), 30, userId, role, dto.getRemark(), action);
         } else if ("MAINTAINER_START".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
             checkStatus(order.getStatus(), RepairOrderStatusEnum.MAINTAINER_ACCEPTED.getLabel());
             order.setStartRepairTime(LocalDateTime.now());
+            if (dto.getExpectedFinishTime() != null) order.setExpectedFinishTime(dto.getExpectedFinishTime());
             moveStatus(order, RepairOrderStatusEnum.IN_REPAIR.getLabel(), 60, userId, role, dto.getRemark(), action);
         } else if ("MAINTAINER_PROGRESS".equals(action)) {
             requireRole(role, "maintainer");
@@ -219,14 +226,30 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             checkStatus(order.getStatus(), RepairOrderStatusEnum.IN_REPAIR.getLabel());
             if (dto.getProgress() == null) throw new BusinessException("请传入进度");
             order.setProgress(dto.getProgress());
+            if (dto.getExpectedFinishTime() != null) order.setExpectedFinishTime(dto.getExpectedFinishTime());
             order.setUpdateTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
             addFlow(order.getId(), RepairOrderStatusEnum.IN_REPAIR.getLabel(), RepairOrderStatusEnum.IN_REPAIR.getLabel(), action, userId, role, "进度更新至" + dto.getProgress() + "%");
             addBusinessLog(order, action, userId, role, order.getStatus(), order.getStatus(), "进度更新至" + dto.getProgress() + "%");
+        } else if ("MAINTAINER_DELAY_APPLY".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), RepairOrderStatusEnum.IN_REPAIR.getLabel());
+            order.setApplyDelay(1);
+            order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+            moveStatus(order, RepairOrderStatusEnum.DELAY_APPLYING.getLabel(), order.getProgress(), userId, role, dto.getRemark(), action);
+        } else if ("MAINTAINER_PARTS_APPLY".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), RepairOrderStatusEnum.IN_REPAIR.getLabel());
+            order.setNeedPurchaseParts(1);
+            order.setPartsDescription(dto.getPartsDescription());
+            moveStatus(order, RepairOrderStatusEnum.PENDING_PARTS.getLabel(), order.getProgress(), userId, role, dto.getRemark(), action);
         } else if ("MAINTAINER_FINISH".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
             checkStatus(order.getStatus(), RepairOrderStatusEnum.IN_REPAIR.getLabel());
+            order.setFixMeasure(dto.getRemark());
             moveStatus(order, RepairOrderStatusEnum.PENDING_CONFIRM.getLabel(), 90, userId, role, dto.getRemark(), action);
             order.setFinishTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);

@@ -9,6 +9,7 @@
         <el-menu-item index="/repair-orders">报修工单</el-menu-item>
         <el-menu-item v-if="user.userInfo.role==='user'" index="/repair-apply">报修申请</el-menu-item>
         <el-menu-item v-if="user.userInfo.role==='user'" index="/my-repairs">我的报修记录</el-menu-item>
+        <el-menu-item v-if="user.userInfo.role==='maintainer'" index="/maintainer/orders">我的待处理工单</el-menu-item>
         <el-menu-item v-if="can('repair:record:write') || isAdmin" index="/repair-records">维修记录</el-menu-item>
         <el-menu-item v-if="can('log:operation:view')" index="/logs">日志管理</el-menu-item>
         <el-menu-item index="/profile">个人中心</el-menu-item>

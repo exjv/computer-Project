@@ -6,6 +6,7 @@ import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
+import java.time.LocalDateTime;
 
 @Data
 public class RepairOrderActionDTO {
@@ -20,4 +21,8 @@ public class RepairOrderActionDTO {
     private Integer satisfactionScore;
     @Size(max = 500, message = "反馈意见不能超过500字")
     private String feedbackContent;
+    private LocalDateTime expectedFinishTime;
+    private LocalDateTime delayedExpectedFinishTime;
+    @Size(max = 500, message = "配件说明不能超过500字")
+    private String partsDescription;
 }

@@ -12,6 +12,7 @@ const routes = [
     { path: 'repair-apply', component: () => import('../views/repair/RepairApplyView.vue') },
     { path: 'my-repairs', component: () => import('../views/repair/MyRepairRecordsView.vue') },
     { path: 'my-repairs/:id/progress', component: () => import('../views/repair/RepairProgressView.vue') },
+    { path: 'maintainer/orders', component: () => import('../views/repair/MaintainerPendingOrdersView.vue') },
     { path: 'repair-orders/:id', component: () => import('../views/repair/RepairOrderDetailView.vue') },
     { path: 'repair-records', component: () => import('../views/record/RepairRecordView.vue'), meta: { permission: 'repair:record:write' } },
     { path: 'logs', component: () => import('../views/log/LogView.vue'), meta: { permission: 'log:operation:view' } },
