@@ -3,6 +3,7 @@ package com.jou.networkrepair.module.auth.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.exception.BusinessException;
+import com.jou.networkrepair.common.security.PermissionService;
 import com.jou.networkrepair.common.utils.JwtUtil;
 import com.jou.networkrepair.module.auth.dto.LoginDTO;
 import com.jou.networkrepair.module.auth.service.CaptchaService;
@@ -30,6 +31,7 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final LoginLogMapper loginLogMapper;
     private final CaptchaService captchaService;
+    private final PermissionService permissionService;
 
     @GetMapping("/captcha")
     public ApiResult<Map<String, String>> captcha() {
@@ -60,7 +62,14 @@ public class AuthController {
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
         saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", null, request);
-        return ApiResult.success(new LoginVO(jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole()), user.getRole(), user.getUsername()));
+        return ApiResult.success(new LoginVO(
+                jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole()),
+                user.getRole(),
+                user.getUsername(),
+                user.getEmployeeNo(),
+                permissionService.getRoleCodes(user.getId(), user.getRole()),
+                permissionService.getPermissionSet(user.getId(), user.getRole())
+        ));
     }
 
     @GetMapping("/oauth/{provider}/url")
@@ -77,9 +86,32 @@ public class AuthController {
     public ApiResult<Map<String, Object>> userInfo(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         SysUser user = userMapper.selectById(userId);
+        if (user == null) throw new BusinessException("用户不存在");
         Map<String, Object> map = new HashMap<>();
         map.put("id", user.getId()); map.put("username", user.getUsername()); map.put("realName", user.getRealName());
+        map.put("employeeNo", user.getEmployeeNo());
         map.put("phone", user.getPhone()); map.put("email", user.getEmail()); map.put("role", user.getRole());
+        map.put("roles", permissionService.getRoleCodes(user.getId(), user.getRole()));
+        map.put("permissions", permissionService.getPermissionSet(user.getId(), user.getRole()));
+        Map<String, Object> routePermissions = new HashMap<>();
+        routePermissions.put("canManageUser", permissionService.hasPermission("user:manage"));
+        routePermissions.put("canManageRole", permissionService.hasPermission("role:manage"));
+        routePermissions.put("canManageDevice", permissionService.hasPermission("device:manage"));
+        routePermissions.put("canViewLogs", permissionService.hasPermission("log:operation:view"));
+        routePermissions.put("canApproveOrder", permissionService.hasPermission("repair:order:approve"));
+        map.put("routePermissions", routePermissions);
+        return ApiResult.success(map);
+    }
+
+    @GetMapping("/employee-no/check")
+    public ApiResult<Map<String, Object>> checkEmployeeNo(@RequestParam String employeeNo,
+                                                          @RequestParam(required = false) Long excludeUserId) {
+        SysUser exists = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmployeeNo, employeeNo));
+        boolean available = exists == null || (excludeUserId != null && excludeUserId.equals(exists.getId()));
+        Map<String, Object> map = new HashMap<>();
+        map.put("employeeNo", employeeNo);
+        map.put("available", available);
+        map.put("userId", exists == null ? null : exists.getId());
         return ApiResult.success(map);
     }
 

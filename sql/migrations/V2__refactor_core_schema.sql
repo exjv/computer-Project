@@ -27,6 +27,26 @@ CREATE TABLE IF NOT EXISTS user_role (
   UNIQUE KEY uk_user_role (user_id, role_id)
 );
 
+CREATE TABLE IF NOT EXISTS permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  permission_code VARCHAR(80) NOT NULL,
+  permission_name VARCHAR(100) NOT NULL,
+  permission_type VARCHAR(20) NOT NULL DEFAULT 'API',
+  status VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
+  remark VARCHAR(255),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_permission_code (permission_code)
+);
+
+CREATE TABLE IF NOT EXISTS role_permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  role_id BIGINT NOT NULL,
+  permission_id BIGINT NOT NULL,
+  create_time DATETIME NOT NULL,
+  UNIQUE KEY uk_role_permission (role_id, permission_id)
+);
+
 -- 旧表 sys_user 重构为 user（如已存在 user 则跳过）
 CREATE TABLE IF NOT EXISTS `user` LIKE sys_user;
 

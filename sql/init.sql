@@ -46,6 +46,28 @@ CREATE TABLE user_role (
   CONSTRAINT fk_user_role_role FOREIGN KEY (role_id) REFERENCES `role`(id)
 ) COMMENT='用户角色关联表';
 
+CREATE TABLE permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  permission_code VARCHAR(80) NOT NULL,
+  permission_name VARCHAR(100) NOT NULL,
+  permission_type VARCHAR(20) NOT NULL DEFAULT 'API',
+  status VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
+  remark VARCHAR(255),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_permission_code (permission_code)
+) COMMENT='权限表';
+
+CREATE TABLE role_permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  role_id BIGINT NOT NULL,
+  permission_id BIGINT NOT NULL,
+  create_time DATETIME NOT NULL,
+  UNIQUE KEY uk_role_permission (role_id, permission_id),
+  CONSTRAINT fk_role_permission_role FOREIGN KEY (role_id) REFERENCES `role`(id),
+  CONSTRAINT fk_role_permission_permission FOREIGN KEY (permission_id) REFERENCES permission(id)
+) COMMENT='角色权限关联表';
+
 CREATE TABLE device_type (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   type_code VARCHAR(50) NOT NULL,
@@ -328,6 +350,36 @@ INSERT INTO `role` (id, role_code, role_name, role_status, remark, create_time, 
 (1, 'admin', '系统管理员', 'ENABLED', '系统管理角色', NOW(), NOW()),
 (2, 'maintainer', '维修人员', 'ENABLED', '维修执行角色', NOW(), NOW()),
 (3, 'user', '报修用户', 'ENABLED', '普通报修用户', NOW(), NOW());
+
+INSERT INTO permission (id, permission_code, permission_name, permission_type, status, create_time, update_time) VALUES
+(1,'user:manage','用户管理','API','ENABLED',NOW(),NOW()),
+(2,'role:manage','角色管理','API','ENABLED',NOW(),NOW()),
+(3,'device:manage','设备管理','API','ENABLED',NOW(),NOW()),
+(4,'repair:order:approve','工单审批','API','ENABLED',NOW(),NOW()),
+(5,'repair:order:assign','工单分配','API','ENABLED',NOW(),NOW()),
+(6,'repair:order:view:all','工单全量查看','API','ENABLED',NOW(),NOW()),
+(7,'repair:order:view:self','工单本人查看','API','ENABLED',NOW(),NOW()),
+(8,'repair:order:create','发起报修','API','ENABLED',NOW(),NOW()),
+(9,'repair:record:write','维修记录填写','API','ENABLED',NOW(),NOW()),
+(10,'notice:publish','公告发布','API','ENABLED',NOW(),NOW()),
+(11,'statistics:view','统计分析查看','API','ENABLED',NOW(),NOW()),
+(12,'report:export','报表生成','API','ENABLED',NOW(),NOW()),
+(13,'log:operation:view','操作日志查看','API','ENABLED',NOW(),NOW()),
+(14,'log:business:view','业务日志查看','API','ENABLED',NOW(),NOW()),
+(15,'repair:supervise','维修流程监管','API','ENABLED',NOW(),NOW()),
+(16,'repair:order:accept','接单','API','ENABLED',NOW(),NOW()),
+(17,'repair:order:reject','拒单','API','ENABLED',NOW(),NOW()),
+(18,'repair:order:progress','维修进度更新','API','ENABLED',NOW(),NOW()),
+(19,'repair:attachment:upload','维修照片上传','API','ENABLED',NOW(),NOW()),
+(20,'repair:expected-finish:update','预计完成时间填写','API','ENABLED',NOW(),NOW()),
+(21,'repair:delay:apply','延期申请','API','ENABLED',NOW(),NOW()),
+(22,'repair:parts:apply','采购配件申请','API','ENABLED',NOW(),NOW()),
+(23,'repair:feedback:confirm','报修确认与评价','API','ENABLED',NOW(),NOW());
+
+INSERT INTO role_permission (role_id, permission_id, create_time) VALUES
+(1,1,NOW()),(1,2,NOW()),(1,3,NOW()),(1,4,NOW()),(1,5,NOW()),(1,6,NOW()),(1,8,NOW()),(1,10,NOW()),(1,11,NOW()),(1,12,NOW()),(1,13,NOW()),(1,14,NOW()),(1,15,NOW()),
+(2,7,NOW()),(2,9,NOW()),(2,16,NOW()),(2,17,NOW()),(2,18,NOW()),(2,19,NOW()),(2,20,NOW()),(2,21,NOW()),(2,22,NOW()),(2,23,NOW()),
+(3,7,NOW()),(3,8,NOW()),(3,23,NOW());
 
 INSERT INTO `user`
 (id, employee_no, username, password, real_name, phone, email, department, role, status, create_time, update_time) VALUES
