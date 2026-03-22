@@ -6,6 +6,7 @@ import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
+import com.jou.networkrepair.module.device.dto.DeviceStatusDTO;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
@@ -14,6 +15,7 @@ import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairRecordMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -31,11 +33,13 @@ public class DeviceController {
 
     @GetMapping("/page")
     public ApiResult<Page<NetworkDevice>> page(@RequestParam Long current, @RequestParam Long size,
+                                               @RequestParam(required = false) String deviceCode,
                                                @RequestParam(required = false) String deviceName,
                                                @RequestParam(required = false) String deviceType,
                                                @RequestParam(required = false) String status,
                                                @RequestParam(required = false) String location) {
         LambdaQueryWrapper<NetworkDevice> qw = new LambdaQueryWrapper<NetworkDevice>()
+                .like(deviceCode != null && !deviceCode.isEmpty(), NetworkDevice::getDeviceCode, deviceCode)
                 .like(deviceName != null && !deviceName.isEmpty(), NetworkDevice::getDeviceName, deviceName)
                 .eq(deviceType != null && !deviceType.isEmpty(), NetworkDevice::getDeviceType, deviceType)
                 .eq(status != null && !status.isEmpty(), NetworkDevice::getStatus, status)
@@ -85,6 +89,7 @@ public class DeviceController {
     @PostMapping
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.DEVICE_MANAGE + "')")
     public ApiResult<Void> add(@RequestBody NetworkDevice entity) {
+        assertUniqueDeviceCode(entity.getDeviceCode(), null);
         entity.setCreateTime(LocalDateTime.now()); entity.setUpdateTime(LocalDateTime.now());
         deviceMapper.insert(entity); return ApiResult.success("新增成功", null);
     }
@@ -92,8 +97,29 @@ public class DeviceController {
     @PutMapping("/{id}")
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.DEVICE_MANAGE + "')")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody NetworkDevice entity) {
+        assertUniqueDeviceCode(entity.getDeviceCode(), id);
         entity.setId(id); entity.setUpdateTime(LocalDateTime.now());
         deviceMapper.updateById(entity); return ApiResult.success("修改成功", null);
+    }
+
+    @GetMapping("/check-code")
+    public ApiResult<Boolean> checkCode(@RequestParam String deviceCode, @RequestParam(required = false) Long excludeId) {
+        LambdaQueryWrapper<NetworkDevice> qw = new LambdaQueryWrapper<NetworkDevice>()
+                .eq(NetworkDevice::getDeviceCode, deviceCode);
+        if (excludeId != null) qw.ne(NetworkDevice::getId, excludeId);
+        Long count = deviceMapper.selectCount(qw);
+        return ApiResult.success(count == null || count == 0L);
+    }
+
+    @PutMapping("/{id}/status")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.DEVICE_MANAGE + "')")
+    public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody @Validated DeviceStatusDTO dto) {
+        NetworkDevice exists = deviceMapper.selectById(id);
+        if (exists == null) throw new BusinessException("设备不存在");
+        exists.setStatus(dto.getStatus());
+        exists.setUpdateTime(LocalDateTime.now());
+        deviceMapper.updateById(exists);
+        return ApiResult.success("状态更新成功", null);
     }
 
     @DeleteMapping("/{id}")
@@ -121,5 +147,14 @@ public class DeviceController {
                 .collect(Collectors.toList());
         if (durations.isEmpty()) return 0L;
         return durations.stream().reduce(0L, Long::sum) / durations.size();
+    }
+
+    private void assertUniqueDeviceCode(String deviceCode, Long excludeId) {
+        if (deviceCode == null || deviceCode.trim().isEmpty()) throw new BusinessException("设备编号不能为空");
+        LambdaQueryWrapper<NetworkDevice> qw = new LambdaQueryWrapper<NetworkDevice>()
+                .eq(NetworkDevice::getDeviceCode, deviceCode.trim());
+        if (excludeId != null) qw.ne(NetworkDevice::getId, excludeId);
+        Long count = deviceMapper.selectCount(qw);
+        if (count != null && count > 0L) throw new BusinessException("设备编号已存在");
     }
 }
