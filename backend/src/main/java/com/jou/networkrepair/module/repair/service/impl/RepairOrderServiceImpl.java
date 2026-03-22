@@ -77,13 +77,25 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         if (!PRIORITY_SET.contains(dto.getPriority())) throw new BusinessException("无效优先级");
         NetworkDevice existsDevice = deviceMapper.selectById(dto.getDeviceId());
         if (existsDevice == null) throw new BusinessException("设备不存在");
+        SysUser reporter = userMapper.selectById(userId);
+        if (reporter == null) throw new BusinessException("报修用户不存在");
 
         RepairOrder order = new RepairOrder();
         order.setDeviceId(dto.getDeviceId());
+        order.setDeviceCode(existsDevice.getDeviceCode());
+        order.setDeviceName(existsDevice.getDeviceName());
+        order.setDeviceType(existsDevice.getDeviceTypeName() != null ? existsDevice.getDeviceTypeName() : existsDevice.getDeviceType());
         order.setTitle(dto.getTitle());
         order.setDescription(dto.getDescription());
+        order.setFaultType(dto.getFaultType());
         order.setPriority(dto.getPriority());
         order.setReporterId(userId);
+        order.setReporterEmployeeNo(reporter.getEmployeeNo());
+        order.setReporterName(reporter.getRealName());
+        order.setContactPhone(dto.getContactPhone() != null && !dto.getContactPhone().trim().isEmpty() ? dto.getContactPhone() : reporter.getPhone());
+        order.setReporterDepartment(reporter.getDepartment());
+        order.setReportLocation(dto.getReportLocation() != null && !dto.getReportLocation().trim().isEmpty() ? dto.getReportLocation() : existsDevice.getLocation());
+        order.setAffectWideAreaNetwork(dto.getAffectWideAreaNetwork());
         order.setOrderNo(generateOrderNo());
         order.setStatus("已提交");
         order.setProgress(5);
@@ -126,6 +138,8 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         }
         String fromStatus = order.getStatus();
         order.setAssignMaintainerId(dto.getAssignMaintainerId());
+        order.setAssignMaintainerEmployeeNo(maintainer.getEmployeeNo());
+        order.setAssignMaintainerName(maintainer.getRealName());
         order.setAssignTime(LocalDateTime.now());
         order.setStatus("待接单");
         order.setProgress(35);
@@ -347,7 +361,15 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         flow.setToStatus(toStatus);
         flow.setAction(action);
         flow.setOperatorId(userId);
+        if (userId != null) {
+            SysUser operator = userMapper.selectById(userId);
+            if (operator != null) {
+                flow.setOperatorEmployeeNo(operator.getEmployeeNo());
+                flow.setOperatorName(operator.getRealName());
+            }
+        }
         flow.setOperatorRole(role);
+        flow.setOperationType(action);
         flow.setRemark(remark);
         flow.setCreateTime(LocalDateTime.now());
         repairOrderFlowMapper.insert(flow);

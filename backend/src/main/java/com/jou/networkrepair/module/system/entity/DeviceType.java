@@ -1,4 +1,4 @@
-package com.jou.networkrepair.module.notice.entity;
+package com.jou.networkrepair.module.system.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -6,14 +6,14 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("announcement")
-public class Notice {
+@TableName("device_type")
+public class DeviceType {
     private Long id;
-    private String title;
-    private String content;
-    private Long publisherId;
-    private String status;
+    private String typeCode;
+    private String typeName;
     private Integer sortNo;
+    private String status;
+    private String remark;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

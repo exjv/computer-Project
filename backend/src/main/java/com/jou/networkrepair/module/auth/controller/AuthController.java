@@ -39,27 +39,27 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResult<LoginVO> login(@RequestBody @Validated LoginDTO dto, HttpServletRequest request) {
         if (!captchaService.verify(dto.getCaptchaKey(), dto.getCaptchaCode())) {
-            saveLoginLog(null, dto.getAccount(), "FAIL_CAPTCHA", request.getRemoteAddr());
+            saveLoginLog(null, dto.getAccount(), "FAIL_CAPTCHA", "验证码错误或已失效", request);
             throw new BusinessException("验证码错误或已失效");
         }
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .and(w -> w.eq(SysUser::getUsername, dto.getAccount()).or().eq(SysUser::getEmployeeNo, dto.getAccount())));
         if (user == null) {
-            saveLoginLog(null, dto.getAccount(), "FAIL_ACCOUNT", request.getRemoteAddr());
+            saveLoginLog(null, dto.getAccount(), "FAIL_ACCOUNT", "账号不存在", request);
             throw new BusinessException("账号不存在");
         }
         if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
-            saveLoginLog(user.getId(), user.getUsername(), "FAIL_PASSWORD", request.getRemoteAddr());
+            saveLoginLog(user.getId(), user.getUsername(), "FAIL_PASSWORD", "密码错误", request);
             throw new BusinessException("密码错误");
         }
         if (!dto.getRole().equals(user.getRole())) {
-            saveLoginLog(user.getId(), user.getUsername(), "FAIL_ROLE", request.getRemoteAddr());
+            saveLoginLog(user.getId(), user.getUsername(), "FAIL_ROLE", "角色选择错误或无权限使用该入口", request);
             throw new BusinessException("角色选择错误或无权限使用该入口");
         }
         if (user.getStatus() == 0) throw new BusinessException("账号已禁用");
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
-        saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", request.getRemoteAddr());
+        saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", null, request);
         return ApiResult.success(new LoginVO(jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole()), user.getRole(), user.getUsername()));
     }
 
@@ -112,9 +112,15 @@ public class AuthController {
     @PostMapping("/logout")
     public ApiResult<Void> logout() { return ApiResult.success("退出成功", null); }
 
-    private void saveLoginLog(Long userId, String username, String loginStatus, String ip) {
+    private void saveLoginLog(Long userId, String username, String loginStatus, String failReason, HttpServletRequest request) {
         LoginLog log = new LoginLog();
-        log.setUserId(userId); log.setUsername(username); log.setIp(ip); log.setLoginStatus(loginStatus); log.setLoginTime(LocalDateTime.now());
+        log.setUserId(userId);
+        log.setUsername(username);
+        log.setIp(request.getRemoteAddr());
+        log.setUserAgent(request.getHeader("User-Agent"));
+        log.setLoginStatus(loginStatus);
+        log.setFailReason(failReason);
+        log.setLoginTime(LocalDateTime.now());
         loginLogMapper.insert(log);
     }
 }

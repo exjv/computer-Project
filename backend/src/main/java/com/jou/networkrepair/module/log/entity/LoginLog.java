@@ -12,6 +12,8 @@ public class LoginLog {
     private Long userId;
     private String username;
     private String ip;
+    private String userAgent;
     private String loginStatus;
+    private String failReason;
     private LocalDateTime loginTime;
 }

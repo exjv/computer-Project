@@ -13,6 +13,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Aspect
 @Component
@@ -30,6 +31,9 @@ public class OperationLogAspect {
         log.setUsername(String.valueOf(request.getUserPrincipal() == null ? "" : request.getUserPrincipal().getName()));
         log.setModule(loggable.module()); log.setOperationType(loggable.operationType()); log.setOperationDesc(loggable.operationDesc());
         log.setRequestMethod(request.getMethod()); log.setRequestUrl(request.getRequestURI()); log.setIp(request.getRemoteAddr());
+        log.setRequestParams(request.getQueryString());
+        log.setResponseCode("200");
+        log.setTraceId(UUID.randomUUID().toString().replace("-", ""));
         log.setOperationTime(LocalDateTime.now());
         operationLogMapper.insert(log);
     }
