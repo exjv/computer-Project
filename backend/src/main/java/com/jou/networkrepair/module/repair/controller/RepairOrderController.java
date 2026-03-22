@@ -19,6 +19,7 @@ import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.system.entity.FileAttachment;
 import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
+import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -170,6 +171,12 @@ public class RepairOrderController {
         data.put("count", assignedList.size());
         data.put("assignedList", assignedList);
         return ApiResult.success("自动分配完成", data);
+    }
+
+    @GetMapping("/{id}/assign-recommendations")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
+    public ApiResult<List<AssignmentRecommendationVO>> recommendMaintainers(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.recommendMaintainers(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @GetMapping("/{id}/attachments")

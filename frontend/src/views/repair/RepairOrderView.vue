@@ -61,7 +61,23 @@
       <template #footer><el-button @click="addDialog=false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="assignDialog" title="分配维修人员"><el-form :model="assignForm"><el-form-item label="维修人员"><el-select v-model="assignForm.assignMaintainerId"><el-option v-for="m in maintainers" :key="m.id" :label="m.realName+'('+m.username+')'" :value="m.id"/></el-select></el-form-item></el-form><template #footer><el-button @click="assignDialog=false">取消</el-button><el-button type="primary" @click="saveAssign">保存</el-button></template></el-dialog>
+    <el-dialog v-model="assignDialog" title="分配维修人员" width="760px">
+      <el-form :model="assignForm">
+        <el-form-item label="维修人员"><el-select v-model="assignForm.assignMaintainerId"><el-option v-for="m in maintainers" :key="m.id" :label="m.realName+'('+m.username+')'" :value="m.id"/></el-select></el-form-item>
+      </el-form>
+      <el-divider>推荐分配（可手动调整）</el-divider>
+      <el-table :data="recommendations" size="small" max-height="280">
+        <el-table-column prop="maintainerName" label="维修人员" width="120"/>
+        <el-table-column prop="recommendationScore" label="推荐分" width="90"/>
+        <el-table-column prop="loadScore" label="负载分" width="90"/>
+        <el-table-column label="负载情况" width="180">
+          <template #default="s">未完成{{ s.row.unfinishedCount }} / 处理中{{ s.row.processingCount }}</template>
+        </el-table-column>
+        <el-table-column prop="recommendReason" label="推荐理由"/>
+        <el-table-column label="选择" width="80"><template #default="s"><el-button link type="primary" @click="assignForm.assignMaintainerId=s.row.maintainerId">选中</el-button></template></el-table-column>
+      </el-table>
+      <template #footer><el-button @click="assignDialog=false">取消</el-button><el-button type="primary" @click="saveAssign">保存</el-button></template>
+    </el-dialog>
     <el-dialog v-model="reassignDialog" title="改派维修人员"><el-form :model="reassignForm"><el-form-item label="维修人员"><el-select v-model="reassignForm.assignMaintainerId"><el-option v-for="m in maintainers" :key="m.id" :label="m.realName+'('+m.username+')'" :value="m.id"/></el-select></el-form-item><el-form-item label="备注"><el-input type="textarea" v-model="reassignForm.remark"/></el-form-item></el-form><template #footer><el-button @click="reassignDialog=false">取消</el-button><el-button type="primary" @click="saveReassign">保存</el-button></template></el-dialog>
     <el-dialog v-model="delayDialog" title="延期审批"><el-form :model="delayForm"><el-form-item label="审批结果"><el-radio-group v-model="delayForm.approved"><el-radio :label="true">通过</el-radio><el-radio :label="false">驳回</el-radio></el-radio-group></el-form-item><el-form-item label="延期完成时间"><el-date-picker v-model="delayForm.delayedExpectedFinishTime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss"/></el-form-item><el-form-item label="备注"><el-input type="textarea" v-model="delayForm.remark"/></el-form-item></el-form><template #footer><el-button @click="delayDialog=false">取消</el-button><el-button type="primary" @click="saveDelayApprove">提交</el-button></template></el-dialog>
     <el-dialog v-model="closeDialog" title="关闭工单"><el-form :model="closeForm"><el-form-item label="关闭类型"><el-radio-group v-model="closeForm.forceClose"><el-radio :label="false">正常关闭</el-radio><el-radio :label="true">强制关闭</el-radio></el-radio-group></el-form-item><el-form-item label="关闭原因"><el-input type="textarea" v-model="closeForm.closeReason"/></el-form-item></el-form><template #footer><el-button @click="closeDialog=false">取消</el-button><el-button type="primary" @click="saveClose">提交</el-button></template></el-dialog>
@@ -84,6 +100,7 @@ const pageTitle = computed(()=>isAdmin.value?'工单管理':(isUser.value?'我�
 const allStatus = ['待提交','已提交/待审核','审核通过','审核驳回','待分配','已分配','待接单','维修人员已接单','维修中','待采购/待配件','申请延期中','延期已批准','待验收/待确认','已完成','已关闭','已取消']
 const query=reactive({orderNo:'',title:'',priority:'',status:'',sortField:'id',sortOrder:'desc'}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
 const devices=ref([]),maintainers=ref([])
+const recommendations=ref([])
 const addDialog=ref(false),assignDialog=ref(false),statusDialog=ref(false),editMode=ref(false)
 const reassignDialog=ref(false),delayDialog=ref(false),closeDialog=ref(false)
 const form=reactive({id:null,deviceId:'',title:'',description:'',priority:'中'})
@@ -96,7 +113,7 @@ const load = async()=>{const r=await getPage(apiPath.value,{...query,...page});l
 const reset=()=>{Object.assign(query,{orderNo:'',title:'',priority:'',status:'',sortField:'id',sortOrder:'desc'});load()}
 const openAdd=()=>{editMode.value=false;Object.assign(form,{id:null,deviceId:'',title:'',description:'',priority:'中',faultType:'',contactPhone:'',reportLocation:'',affectWideAreaNetwork:0,remark:'',originalExpectedFinishTime:''});addDialog.value=true}
 const save=async()=>{if(editMode.value){await putApi(`/repair-orders/${form.id}`,form);ElMessage.success('修改成功')}else{await postApi('/repair-orders',form);ElMessage.success('提交成功')}addDialog.value=false;load()}
-const assign=(row)=>{assignForm.id=row.id;assignForm.assignMaintainerId=row.assignMaintainerId;assignDialog.value=true}
+const assign=async(row)=>{assignForm.id=row.id;assignForm.assignMaintainerId=row.assignMaintainerId;recommendations.value=await getPage(`/repair-orders/${row.id}/assign-recommendations`);assignDialog.value=true}
 const saveAssign=async()=>{await putApi(`/repair-orders/${assignForm.id}/assign`,assignForm);ElMessage.success('分配成功');assignDialog.value=false;load()}
 const canReassign=(row)=>['待接单','维修人员已接单','维修中'].includes(row.status)
 const reassign=(row)=>{reassignForm.id=row.id;reassignForm.assignMaintainerId=row.assignMaintainerId;reassignForm.remark='';reassignDialog.value=true}
