@@ -3,16 +3,7 @@
     <el-aside width="220px" class="layout-aside">
       <h3 class="logo-title">校园网络报修系统</h3>
       <el-menu router background-color="#001529" text-color="#fff" active-text-color="#ffd04b">
-        <el-menu-item index="/">首页</el-menu-item>
-        <el-menu-item v-if="can('user:manage')" index="/users">用户管理</el-menu-item>
-        <el-menu-item v-if="can('device:manage') || isAdmin" index="/devices">设备管理</el-menu-item>
-        <el-menu-item index="/repair-orders">报修工单</el-menu-item>
-        <el-menu-item v-if="user.userInfo.role==='user'" index="/repair-apply">报修申请</el-menu-item>
-        <el-menu-item v-if="user.userInfo.role==='user'" index="/my-repairs">我的报修记录</el-menu-item>
-        <el-menu-item v-if="user.userInfo.role==='maintainer'" index="/maintainer/orders">我的待处理工单</el-menu-item>
-        <el-menu-item v-if="can('repair:record:write') || isAdmin" index="/repair-records">维修记录</el-menu-item>
-        <el-menu-item v-if="can('log:operation:view')" index="/logs">日志管理</el-menu-item>
-        <el-menu-item index="/profile">个人中心</el-menu-item>
+        <el-menu-item v-for="m in visibleMenus" :key="m.path" :index="m.path">{{ m.label }}</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -31,10 +22,13 @@
 import { computed } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
+import { MENU_CONFIG } from '../constants/rbac'
 const user = useUserStore(); const router = useRouter()
-const isAdmin = computed(() => user.userInfo.role === 'admin')
-const isMaintainer = computed(() => user.userInfo.role === 'maintainer')
-const can = (code) => user.permissions.includes(code)
+const visibleMenus = computed(() => MENU_CONFIG.filter(m => {
+  if (m.perm) return user.hasPerm(m.perm)
+  if (m.anyPerm) return user.hasAnyPerm(m.anyPerm)
+  return true
+}))
 const logout = () => { user.logout(); router.push('/login') }
 </script>
 <style scoped>

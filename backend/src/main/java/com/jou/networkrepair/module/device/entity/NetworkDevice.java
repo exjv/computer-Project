@@ -16,15 +16,15 @@ public class NetworkDevice {
     private String deviceName;
     /** 重构字段：设备类型编码 */
     private String deviceType;
-    /** 新增字段：设备类型名称（冗余） */
-    private String deviceTypeName;
-    /** 新增字段：品牌 */
     private String brand;
-    /** 新增字段：型号 */
     private String model;
-    /** 新增字段：序列号 */
-    private String serialNo;
-    /** 兼容字段：历史品牌型号 */
+    private String serialNumber;
+    private String campus;
+    private String buildingLocation;
+    private LocalDate enableDate;
+    private LocalDate warrantyExpiryDate;
+    private String ownerName;
+    private String manageDepartment;
     private String brandModel;
     private String ipAddress;
     private String macAddress;
@@ -53,14 +53,11 @@ public class NetworkDevice {
     private String managementDept;
     /** 重构字段：设备状态 */
     private String status;
-    /** 新增字段：最近故障时间 */
     private LocalDateTime lastFaultTime;
-    /** 新增字段：累计报修次数 */
-    private Integer totalRepairOrderCount;
-    /** 新增字段：累计维修次数 */
+    private Integer totalRepairRequests;
     private Integer totalRepairCount;
-    /** 新增字段：历史故障原因统计(JSON) */
     private String faultReasonStats;
+    private Integer repairApprovalRequired;
     private String remark;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

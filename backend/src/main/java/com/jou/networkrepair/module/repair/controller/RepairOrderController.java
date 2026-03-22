@@ -3,6 +3,9 @@ package com.jou.networkrepair.module.repair.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jou.networkrepair.module.log.entity.OperationLog;
+import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
 import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderActionDTO;
@@ -47,8 +50,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RepairOrderController {
     private final RepairOrderService repairOrderService;
-    private final FileAttachmentMapper fileAttachmentMapper;
-    private final RepairRecordMapper repairRecordMapper;
+    private final OperationLogMapper operationLogMapper;
 
     @GetMapping("/page")
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
@@ -72,6 +74,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/my")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Page<RepairOrder>> my(@RequestParam Long current, @RequestParam Long size,
                                            @RequestParam(required = false) String status,
                                            @RequestParam(required = false) String orderNo,
@@ -92,6 +95,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<RepairOrder> get(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
@@ -120,6 +124,13 @@ public class RepairOrderController {
         return ApiResult.success("删除成功", null);
     }
 
+
+    @GetMapping("/{id}/recommend-maintainers")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO>> recommendMaintainers(@PathVariable Long id) {
+        return ApiResult.success(repairOrderService.recommendMaintainers(id));
+    }
+
     @PutMapping("/{id}/assign")
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
     @Loggable(module = "工单管理", operationType = "分配", operationDesc = "分配维修人员")
@@ -129,6 +140,8 @@ public class RepairOrderController {
     }
 
     @PutMapping("/{id}/action")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    @Loggable(module = "工单流程", operationType = "流转", operationDesc = "执行工单流转动作")
     public ApiResult<Void> action(@PathVariable Long id, @RequestBody @Validated RepairOrderActionDTO dto, HttpServletRequest request) {
         repairOrderService.action(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("操作成功", null);
@@ -142,34 +155,21 @@ public class RepairOrderController {
     }
 
     @GetMapping("/{id}/flows")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<List<RepairOrderFlow>> flows(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
-    @GetMapping("/{id}/business-logs")
-    public ApiResult<List<BusinessLog>> businessLogs(@PathVariable Long id, HttpServletRequest request) {
-        return ApiResult.success(repairOrderService.businessLogs(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
-    }
 
-    @PutMapping("/{id}/reassign")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
-    public ApiResult<Void> reassign(@PathVariable Long id, @RequestBody @Validated RepairOrderReassignDTO dto, HttpServletRequest request) {
-        repairOrderService.reassign(id, dto, (Long) request.getAttribute("userId"));
-        return ApiResult.success("改派成功", null);
-    }
-
-    @PutMapping("/{id}/delay-approve")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_APPROVE + "')")
-    public ApiResult<Void> approveDelay(@PathVariable Long id, @RequestBody @Validated RepairOrderDelayApproveDTO dto, HttpServletRequest request) {
-        repairOrderService.approveDelay(id, dto, (Long) request.getAttribute("userId"));
-        return ApiResult.success("延期审批完成", null);
-    }
-
-    @PutMapping("/{id}/close")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
-    public ApiResult<Void> close(@PathVariable Long id, @RequestBody @Validated RepairOrderCloseDTO dto, HttpServletRequest request) {
-        repairOrderService.close(id, dto, (Long) request.getAttribute("userId"));
-        return ApiResult.success("关闭处理成功", null);
+    @GetMapping("/{id}/records")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    public ApiResult<Map<String, Object>> records(@PathVariable Long id, HttpServletRequest request) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("flows", repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+        map.put("logs", operationLogMapper.selectList(new LambdaQueryWrapper<OperationLog>()
+                .like(OperationLog::getRequestUrl, "/repair-orders/" + id)
+                .orderByDesc(OperationLog::getOperationTime)));
+        return ApiResult.success(map);
     }
 
     @PutMapping("/{id}/status")
@@ -181,6 +181,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/statistics")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Map<String, Object>> stats(HttpServletRequest request) {
         return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
