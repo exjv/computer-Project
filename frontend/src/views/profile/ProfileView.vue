@@ -15,9 +15,19 @@
       </el-col>
       <el-col :span="12">
         <el-card header="修改密码">
-          <el-form :model="pwd" label-width="100px">
+          <el-form :model="pwd" label-width="120px">
             <el-form-item label="旧密码"><el-input v-model="pwd.oldPassword" type="password"/></el-form-item>
             <el-form-item label="新密码"><el-input v-model="pwd.newPassword" type="password"/></el-form-item>
+            <el-form-item label="确认新密码"><el-input v-model="pwd.confirmNewPassword" type="password"/></el-form-item>
+            <el-form-item label="验证码">
+              <div style="display:flex;gap:8px;width:100%">
+                <el-input v-model="pwd.captchaCode" placeholder="请输入验证码"/>
+                <el-button @click="refreshCaptcha">{{ pwd.captchaView || '加载中' }}</el-button>
+              </div>
+            </el-form-item>
+            <el-alert :closable="false" type="warning" show-icon style="margin-bottom: 10px">
+              密码需至少 8 位，且必须包含字母和数字。
+            </el-alert>
             <el-button type="primary" @click="savePwd">修改密码</el-button>
           </el-form>
         </el-card>
@@ -26,13 +36,21 @@
   </div>
 </template>
 <script setup>
-import { reactive } from 'vue'
+import { onMounted, reactive } from 'vue'
 import { useUserStore } from '../../stores/user'
-import { updatePasswordApi, updateProfileApi } from '../../api'
+import { captchaApi, updatePasswordApi, updateProfileApi } from '../../api'
 import { ElMessage } from 'element-plus'
 const store=useUserStore()
 const profile=reactive({...store.userInfo})
-const pwd=reactive({oldPassword:'',newPassword:''})
+const pwd=reactive({oldPassword:'',newPassword:'',confirmNewPassword:'',captchaCode:'',captchaKey:'',captchaView:''})
 const saveProfile=async()=>{await updateProfileApi(profile);ElMessage.success('个人信息更新成功');await store.fetchUserInfo();Object.assign(profile,store.userInfo)}
-const savePwd=async()=>{await updatePasswordApi(pwd);ElMessage.success('密码修改成功');pwd.oldPassword='';pwd.newPassword=''}
+const refreshCaptcha=async()=>{const data=await captchaApi();pwd.captchaView=data.captchaCode;pwd.captchaKey=data.captchaKey;pwd.captchaCode=''}
+const savePwd=async()=>{
+  if(pwd.newPassword!==pwd.confirmNewPassword){ElMessage.error('两次新密码不一致');return}
+  await updatePasswordApi(pwd)
+  ElMessage.success('密码修改成功')
+  Object.assign(pwd,{oldPassword:'',newPassword:'',confirmNewPassword:'',captchaCode:''})
+  await refreshCaptcha()
+}
+onMounted(refreshCaptcha)
 </script>
