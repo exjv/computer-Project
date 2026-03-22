@@ -66,6 +66,22 @@ export const useUserStore = defineStore('user', {
       const mine = this.userInfo.permissions || []
       return perms.some(p => mine.includes(p))
     },
+    hasRole(role) {
+      const roles = this.userInfo.roles || []
+      return roles.includes(role)
+    },
+    hasAnyRole(roles = []) {
+      const mine = this.userInfo.roles || []
+      return roles.some(r => mine.includes(r))
+    },
+    hasPerm(perm) {
+      const perms = this.userInfo.permissions || []
+      return perms.includes(perm)
+    },
+    hasAnyPerm(perms = []) {
+      const mine = this.userInfo.permissions || []
+      return perms.some(p => mine.includes(p))
+    },
     logout() { this.token=''; this.userInfo={}; localStorage.clear() }
   }
 })

@@ -221,7 +221,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         } else if ("USER_CANCEL".equals(action)) {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能撤销自己的工单");
-            if (!Arrays.asList("已提交/待审核", "审核驳回").contains(order.getStatus())) throw new BusinessException("当前状态不允许撤销");
+            if (!Arrays.asList("已提交/待审核", "审核驳回", "待分配").contains(order.getStatus())) throw new BusinessException("当前状态不允许撤销");
             moveStatus(order, "已取消", 0, userId, role, dto.getRemark(), action);
         } else if ("MAINTAINER_ACCEPT".equals(action)) {
             requireRole(role, "maintainer");
@@ -693,7 +693,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         transitionMap.put("已提交/待审核", new HashSet<>(Arrays.asList("审核通过", "审核驳回", "已取消")));
         transitionMap.put("审核通过", new HashSet<>(Collections.singletonList("待分配")));
         transitionMap.put("审核驳回", new HashSet<>(Collections.singletonList("已取消")));
-        transitionMap.put("待分配", new HashSet<>(Collections.singletonList("已分配")));
+        transitionMap.put("待分配", new HashSet<>(Arrays.asList("已分配", "已取消")));
         transitionMap.put("已分配", new HashSet<>(Collections.singletonList("待接单")));
         transitionMap.put("待接单", new HashSet<>(Arrays.asList("维修人员已接单", "待分配")));
         transitionMap.put("维修人员已接单", new HashSet<>(Collections.singletonList("维修中")));

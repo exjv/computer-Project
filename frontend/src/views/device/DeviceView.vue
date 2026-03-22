@@ -79,13 +79,6 @@
 
       <template #footer><el-button @click="dialog=false">关闭</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>
-
-    <el-dialog v-model="statusDialog" title="设备状态维护" width="420px">
-      <el-form :model="statusForm" label-width="90px">
-        <el-form-item label="设备状态"><el-select v-model="statusForm.status"><el-option v-for="s in statusOptions" :key="s" :label="s" :value="s"/></el-select></el-form-item>
-      </el-form>
-      <template #footer><el-button @click="statusDialog=false">取消</el-button><el-button type="primary" @click="saveStatus">提交</el-button></template>
-    </el-dialog>
   </div>
 </template>
 

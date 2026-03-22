@@ -182,6 +182,13 @@ const deleteNotice = async row => {
   await loadNotices()
 }
 
+const deleteNotice = async row => {
+  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
+  await delApi(`/notices/${row.id}`)
+  ElMessage.success('公告已删除')
+  await loadNotices()
+}
+
 const switchStatus = async row => {
   const next = row.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
   await putApi(`/notices/${row.id}/status`, { status: next })
