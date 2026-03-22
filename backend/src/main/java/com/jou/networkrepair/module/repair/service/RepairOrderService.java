@@ -11,6 +11,7 @@ import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
+import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
@@ -37,4 +38,5 @@ public interface RepairOrderService {
     Map<String, Object> stats(Long userId, String role);
     List<DispatchResultVO> autoDispatch();
     List<AssignmentRecommendationVO> recommendMaintainers(Long id, Long userId, String role);
+    RepairEstimateVO estimateFinishTime(Long id, Long userId, String role);
 }

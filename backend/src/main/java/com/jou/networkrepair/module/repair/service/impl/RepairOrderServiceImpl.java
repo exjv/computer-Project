@@ -22,6 +22,7 @@ import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
+import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.system.entity.RepairFeedback;
 import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
@@ -255,6 +256,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             moveStatus(order, RepairOrderStatusEnum.PENDING_CONFIRM.getLabel(), 90, userId, role, dto.getRemark(), action);
             order.setFinishTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
+            recordPredictionError(order, userId);
         } else if ("USER_CONFIRM_RESOLVED".equals(action)) {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
@@ -423,6 +425,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
                 RepairOrderStatusEnum.IN_REPAIR.getLabel(),
                 RepairOrderStatusEnum.PENDING_CONFIRM.getLabel()))));
         map.put("finished", repairOrderMapper.selectCount(base.clone().eq(RepairOrder::getStatus, RepairOrderStatusEnum.FINISHED.getLabel())));
+        fillPredictionStats(map, userId, role);
         return map;
     }
 
@@ -543,6 +546,16 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         return list;
     }
 
+    @Override
+    public RepairEstimateVO estimateFinishTime(Long id, Long userId, String role) {
+        RepairOrder order = detail(id, userId, role);
+        if (order == null) throw new BusinessException("工单不存在");
+        double estimatedHours = calculateEstimatedHours(order, order.getAssignMaintainerId());
+        LocalDateTime baseTime = order.getStartRepairTime() != null ? order.getStartRepairTime() : LocalDateTime.now();
+        LocalDateTime estimatedFinish = baseTime.plusMinutes((long) (estimatedHours * 60D));
+        return new RepairEstimateVO(estimatedFinish.toString(), estimatedHours, buildEstimateBasis(order, estimatedHours));
+    }
+
     private double calcAvgHandleHours(List<RepairOrder> finishedOrders) {
         if (finishedOrders == null || finishedOrders.isEmpty()) return 24D;
         double total = 0D;
@@ -561,6 +574,91 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         if (targetDeviceType == null || targetDeviceType.trim().isEmpty()) return 0.5D;
         long matched = finishedOrders.stream().filter(v -> targetDeviceType.equals(v.getDeviceType())).count();
         return Math.max(0.2D, Math.min(1D, (double) matched / (double) finishedOrders.size()));
+    }
+
+    private double calculateEstimatedHours(RepairOrder order, Long maintainerId) {
+        double deviceHours = estimateByDeviceType(order.getDeviceType());
+        double faultHours = estimateByFaultType(order.getFaultType());
+        double urgencyFactor = estimateUrgencyFactor(order.getPriority());
+        double partsHours = order.getNeedPurchaseParts() != null && order.getNeedPurchaseParts() == 1 ? 8D : 0D;
+        double maintainerAvgHours = estimateMaintainerAvgHours(maintainerId);
+        return (deviceHours + faultHours + partsHours) * urgencyFactor * 0.7D + maintainerAvgHours * 0.3D;
+    }
+
+    private String buildEstimateBasis(RepairOrder order, double estimatedHours) {
+        return String.format("设备类型=%s；故障类型=%s；紧急程度=%s；采购配件=%s；维修人员历史平均处理时长已纳入，估算%.1f小时",
+                order.getDeviceType() == null ? "-" : order.getDeviceType(),
+                order.getFaultType() == null ? "-" : order.getFaultType(),
+                order.getPriority() == null ? "-" : order.getPriority(),
+                order.getNeedPurchaseParts() != null && order.getNeedPurchaseParts() == 1 ? "是" : "否",
+                estimatedHours);
+    }
+
+    private double estimateByDeviceType(String deviceType) {
+        if (deviceType == null) return 6D;
+        if (deviceType.contains("核心") || deviceType.contains("防火墙") || deviceType.contains("服务器")) return 10D;
+        if (deviceType.contains("交换机") || deviceType.contains("路由器")) return 7D;
+        if (deviceType.contains("AP") || deviceType.contains("无线")) return 4D;
+        return 6D;
+    }
+
+    private double estimateByFaultType(String faultType) {
+        if (faultType == null) return 2D;
+        if (faultType.contains("中断") || faultType.contains("瘫痪")) return 5D;
+        if (faultType.contains("性能") || faultType.contains("丢包")) return 3D;
+        if (faultType.contains("配置")) return 2D;
+        return 2.5D;
+    }
+
+    private double estimateUrgencyFactor(String priority) {
+        if ("高".equals(priority)) return 1.25D;
+        if ("低".equals(priority)) return 0.85D;
+        return 1D;
+    }
+
+    private double estimateMaintainerAvgHours(Long maintainerId) {
+        if (maintainerId == null) return 8D;
+        List<RepairOrder> finishedOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .eq(RepairOrder::getAssignMaintainerId, maintainerId)
+                .eq(RepairOrder::getStatus, RepairOrderStatusEnum.FINISHED.getLabel()));
+        return calcAvgHandleHours(finishedOrders);
+    }
+
+    private void recordPredictionError(RepairOrder order, Long operatorId) {
+        if (order.getExpectedFinishTime() == null || order.getFinishTime() == null) return;
+        long errorMinutes = Duration.between(order.getExpectedFinishTime(), order.getFinishTime()).toMinutes();
+        String content = String.format("预测完成时间=%s，实际完成时间=%s，误差=%d分钟",
+                order.getExpectedFinishTime(), order.getFinishTime(), errorMinutes);
+        addBusinessLog(order, "PREDICTION_ERROR", operatorId, "system", order.getStatus(), order.getStatus(), content);
+    }
+
+    private void fillPredictionStats(Map<String, Object> map, Long userId, String role) {
+        LambdaQueryWrapper<RepairOrder> wrapper = new LambdaQueryWrapper<RepairOrder>()
+                .eq(RepairOrder::getStatus, RepairOrderStatusEnum.FINISHED.getLabel())
+                .isNotNull(RepairOrder::getExpectedFinishTime)
+                .isNotNull(RepairOrder::getFinishTime);
+        if ("user".equals(role)) wrapper.eq(RepairOrder::getReporterId, userId);
+        if ("maintainer".equals(role)) wrapper.eq(RepairOrder::getAssignMaintainerId, userId);
+        List<RepairOrder> orders = repairOrderMapper.selectList(wrapper);
+        if (orders.isEmpty()) {
+            map.put("predictionComparableCount", 0);
+            map.put("predictionAvgAbsErrorHours", 0D);
+            map.put("predictionWithin4hCount", 0);
+            map.put("predictionWithin24hCount", 0);
+            return;
+        }
+        double totalAbsHours = 0D;
+        int within4 = 0, within24 = 0;
+        for (RepairOrder o : orders) {
+            double absHours = Math.abs(Duration.between(o.getExpectedFinishTime(), o.getFinishTime()).toMinutes()) / 60D;
+            totalAbsHours += absHours;
+            if (absHours <= 4D) within4++;
+            if (absHours <= 24D) within24++;
+        }
+        map.put("predictionComparableCount", orders.size());
+        map.put("predictionAvgAbsErrorHours", totalAbsHours / orders.size());
+        map.put("predictionWithin4hCount", within4);
+        map.put("predictionWithin24hCount", within24);
     }
 
     private String generateOrderNo() {

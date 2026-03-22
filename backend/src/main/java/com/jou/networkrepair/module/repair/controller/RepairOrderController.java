@@ -21,6 +21,7 @@ import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
+import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -177,6 +178,11 @@ public class RepairOrderController {
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
     public ApiResult<List<AssignmentRecommendationVO>> recommendMaintainers(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.recommendMaintainers(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @GetMapping("/{id}/estimate-finish-time")
+    public ApiResult<RepairEstimateVO> estimateFinishTime(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.estimateFinishTime(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @GetMapping("/{id}/attachments")

@@ -58,6 +58,13 @@
         <el-descriptions-item label="关闭原因">{{ detail.closeReason || '-' }}</el-descriptions-item>
       </el-descriptions>
 
+      <el-divider>预计修复时间预测</el-divider>
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="预计完成时间">{{ estimate.estimatedFinishTime || detail.expectedFinishTime || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="预测工时（小时）">{{ estimate.estimatedHours || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="预测依据说明">{{ estimate.basis || '-' }}</el-descriptions-item>
+      </el-descriptions>
+
       <el-divider>附件图片区</el-divider>
       <el-empty v-if="!attachments.length" description="暂无附件"/>
       <el-row v-else :gutter="12">
@@ -119,6 +126,7 @@ const detail = ref({})
 const flows = ref([])
 const attachments = ref([])
 const businessLogs = ref([])
+const estimate = ref({})
 const role = computed(() => useUserStore().userInfo.role)
 const isAdmin = computed(() => role.value === 'admin')
 const isMaintainer = computed(() => role.value === 'maintainer')
@@ -149,6 +157,7 @@ const load = async () => {
   flows.value = await getPage(`/repair-orders/${id}/flows`)
   attachments.value = await getPage(`/repair-orders/${id}/attachments`)
   businessLogs.value = await getPage(`/repair-orders/${id}/business-logs`)
+  estimate.value = await getPage(`/repair-orders/${id}/estimate-finish-time`)
 }
 
 const doAction = async (action) => {
