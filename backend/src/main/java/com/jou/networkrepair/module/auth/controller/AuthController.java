@@ -32,11 +32,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
+    private static final Pattern PASSWORD_STRENGTH = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d).{8,}$");
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
@@ -113,18 +115,57 @@ public class AuthController {
     @PutMapping("/updatePassword")
     public ApiResult<Void> updatePassword(@RequestBody Map<String, String> body, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
+        String ip = request.getRemoteAddr();
+        if (userId == null) {
+            saveLoginLog(null, "UNKNOWN", "FAIL_PWD_ILLEGAL_USER", ip);
+            throw new BusinessException("非法请求，请重新登录后再试");
+        }
         SysUser user = userMapper.selectById(userId);
+        if (user == null) {
+            saveLoginLog(userId, "UNKNOWN", "FAIL_PWD_USER_NOT_FOUND", ip);
+            throw new BusinessException("用户不存在，无法修改密码");
+        }
+
         String oldPassword = body.get("oldPassword");
         String newPassword = body.get("newPassword");
-        if (oldPassword == null || oldPassword.trim().isEmpty()) throw new BusinessException("旧密码不能为空");
-        if (newPassword == null || newPassword.trim().isEmpty()) throw new BusinessException("新密码不能为空");
-        if (newPassword.length() < 6) throw new BusinessException("新密码长度不能小于6位");
-        if (oldPassword.equals(newPassword)) throw new BusinessException("新旧密码不能一致");
-        if (!passwordEncoder.matches(oldPassword, user.getPassword())) throw new BusinessException("旧密码错误");
+        String confirmPassword = body.get("confirmPassword");
+        String captchaKey = body.get("captchaKey");
+        String captchaCode = body.get("captchaCode");
+
+        if (isBlank(oldPassword) || isBlank(newPassword) || isBlank(confirmPassword)) {
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_PARAM_EMPTY", ip);
+            throw new BusinessException("旧密码、新密码、确认密码均不能为空");
+        }
+        if (isBlank(captchaKey) || isBlank(captchaCode)) {
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CAPTCHA_EMPTY", ip);
+            throw new BusinessException("验证码不能为空");
+        }
+        if (!captchaService.verify(captchaKey, captchaCode)) {
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CAPTCHA", ip);
+            throw new BusinessException("验证码错误或已失效");
+        }
+        if (!newPassword.equals(confirmPassword)) {
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CONFIRM", ip);
+            throw new BusinessException("两次输入的新密码不一致");
+        }
+        if (!PASSWORD_STRENGTH.matcher(newPassword).matches()) {
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_WEAK", ip);
+            throw new BusinessException("密码强度不足：至少8位且包含字母和数字");
+        }
+        if (oldPassword.equals(newPassword)) {
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_SAME", ip);
+            throw new BusinessException("新旧密码不能一致");
+        }
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_OLD", ip);
+            throw new BusinessException("旧密码错误");
+        }
+
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
-        return ApiResult.success("修改成功", null);
+        saveLoginLog(userId, user.getUsername(), "SUCCESS_PWD_UPDATE", ip);
+        return ApiResult.success("密码修改成功", null);
     }
 
     @PutMapping("/updateProfile")
@@ -143,6 +184,10 @@ public class AuthController {
         LoginLog log = new LoginLog();
         log.setUserId(userId); log.setUsername(username); log.setIp(ip); log.setLoginStatus(loginStatus); log.setLoginTime(LocalDateTime.now());
         loginLogMapper.insert(log);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private List<String> queryRoleCodes(SysUser user) {
