@@ -35,6 +35,35 @@
         <el-button size="small" type="danger" @click="openUnresolvedDialog">查看未解决返修</el-button>
       </div>
     </el-card>
+    <el-card v-if="isAdmin" style="margin-bottom:10px">
+      <el-form :inline="true" :model="analyticsQuery">
+        <el-form-item label="统计维度">
+          <el-select v-model="analyticsQuery.rangeType" style="width:160px">
+            <el-option label="日" value="day"/>
+            <el-option label="月" value="month"/>
+            <el-option label="半年" value="halfyear"/>
+            <el-option label="年" value="year"/>
+            <el-option label="自定义" value="custom"/>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="自定义区间" v-if="analyticsQuery.rangeType==='custom'">
+          <el-date-picker v-model="analyticsQuery.customRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" range-separator="~" start-placeholder="开始" end-placeholder="结束"/>
+        </el-form-item>
+        <el-button type="primary" @click="loadAnalytics">刷新分析</el-button>
+      </el-form>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div ref="trendChartRef" style="width:48%;height:300px;min-width:420px"></div>
+        <div ref="faultChartRef" style="width:48%;height:300px;min-width:420px"></div>
+        <div ref="maintainerChartRef" style="width:48%;height:300px;min-width:420px"></div>
+        <div ref="satisfactionChartRef" style="width:48%;height:300px;min-width:420px"></div>
+      </div>
+      <div style="margin-top:8px">
+        <el-tag type="info" style="margin-right:8px">延期占比 {{ Number(analyticsData.delayOrderRatio || 0).toFixed(2) }}%</el-tag>
+        <el-tag type="info" style="margin-right:8px">配件采购占比 {{ Number(analyticsData.partsPurchaseRatio || 0).toFixed(2) }}%</el-tag>
+        <el-tag type="success" style="margin-right:8px;cursor:pointer" @click="applyDrilldown({applyDelay:1,status:'维修中'})">延期工单数联动</el-tag>
+        <el-tag type="warning" style="cursor:pointer" @click="applyDrilldown({needPurchaseParts:1})">配件采购工单联动</el-tag>
+      </div>
+    </el-card>
 
     <el-table :data="list" style="margin-top:12px">
       <el-table-column prop="orderNo" label="工单编号" width="180" />
@@ -119,11 +148,12 @@
   </div>
 </template>
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { getPage, postApi, putApi, autoDispatchApi } from '../../api'
 import { useUserStore } from '../../stores/user'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+import * as echarts from 'echarts'
 
 const router = useRouter()
 const role = computed(()=>useUserStore().userInfo.role)
@@ -132,14 +162,18 @@ const isUser = computed(()=>role.value==='user')
 const isMaintainer = computed(()=>role.value==='maintainer')
 const pageTitle = computed(()=>isAdmin.value?'工单管理':(isUser.value?'我的报修':'我的工单'))
 const allStatus = ['待提交','已提交/待审核','审核通过','审核驳回','待分配','已分配','待接单','维修人员已接单','维修中','待采购/待配件','申请延期中','延期已批准','待验收/待确认','已完成','已关闭','已取消']
-const query=reactive({orderNo:'',title:'',priority:'',status:'',sortField:'id',sortOrder:'desc'}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
+const query=reactive({orderNo:'',title:'',priority:'',status:'',deviceType:'',faultType:'',assignMaintainerId:'',applyDelay:'',needPurchaseParts:'',reportTimeStart:'',reportTimeEnd:'',sortField:'id',sortOrder:'desc'}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
 const devices=ref([]),maintainers=ref([])
 const stats=reactive({})
+const analyticsQuery=reactive({ rangeType:'month', customRange:[] })
+const analyticsData=reactive({})
 const recommendations=ref([])
 const addDialog=ref(false),assignDialog=ref(false),statusDialog=ref(false),editMode=ref(false)
 const reassignDialog=ref(false),delayDialog=ref(false),closeDialog=ref(false)
 const lowDialog=ref(false),unresolvedDialog=ref(false)
 const lowList=ref([]),unresolvedList=ref([])
+const trendChartRef=ref(null),faultChartRef=ref(null),maintainerChartRef=ref(null),satisfactionChartRef=ref(null)
+let trendChart, faultChart, maintainerChart, satisfactionChart
 const form=reactive({id:null,deviceId:'',title:'',description:'',priority:'中'})
 const assignForm=reactive({id:null,assignMaintainerId:null}),statusForm=reactive({id:null,status:'维修中'})
 const reassignForm=reactive({id:null,assignMaintainerId:null,remark:''})
@@ -147,7 +181,7 @@ const delayForm=reactive({id:null,approved:true,delayedExpectedFinishTime:'',rem
 const closeForm=reactive({id:null,forceClose:false,closeReason:''})
 const apiPath = computed(()=>isAdmin.value?'/repair-orders/page':'/repair-orders/my')
 const load = async()=>{const r=await getPage(apiPath.value,{...query,...page});list.value=r.records;total.value=r.total;Object.assign(stats, await getPage('/repair-orders/statistics'))}
-const reset=()=>{Object.assign(query,{orderNo:'',title:'',priority:'',status:'',sortField:'id',sortOrder:'desc'});load()}
+const reset=()=>{Object.assign(query,{orderNo:'',title:'',priority:'',status:'',deviceType:'',faultType:'',assignMaintainerId:'',applyDelay:'',needPurchaseParts:'',reportTimeStart:'',reportTimeEnd:'',sortField:'id',sortOrder:'desc'});load()}
 const openAdd=()=>{editMode.value=false;Object.assign(form,{id:null,deviceId:'',title:'',description:'',priority:'中',faultType:'',contactPhone:'',reportLocation:'',affectWideAreaNetwork:0,remark:'',originalExpectedFinishTime:''});addDialog.value=true}
 const save=async()=>{if(editMode.value){await putApi(`/repair-orders/${form.id}`,form);ElMessage.success('修改成功')}else{await postApi('/repair-orders',form);ElMessage.success('提交成功')}addDialog.value=false;load()}
 const assign=async(row)=>{assignForm.id=row.id;assignForm.assignMaintainerId=row.assignMaintainerId;recommendations.value=await getPage(`/repair-orders/${row.id}/assign-recommendations`);assignDialog.value=true}
@@ -174,6 +208,48 @@ const openUnresolvedDialog = async () => {
   unresolvedList.value = data.records || []
   unresolvedDialog.value = true
 }
+const applyDrilldown = async (filters={}) => {
+  Object.assign(query, { deviceType:'', faultType:'', assignMaintainerId:'', applyDelay:'', needPurchaseParts:'' }, filters)
+  if (analyticsData.rangeStart && analyticsData.rangeEnd) {
+    query.reportTimeStart = String(analyticsData.rangeStart).replace('T', ' ').slice(0,19)
+    query.reportTimeEnd = String(analyticsData.rangeEnd).replace('T', ' ').slice(0,19)
+  }
+  page.current = 1
+  await load()
+}
+const loadAnalytics = async () => {
+  const params = { rangeType: analyticsQuery.rangeType }
+  if (analyticsQuery.rangeType === 'custom' && analyticsQuery.customRange?.length === 2) {
+    params.start = analyticsQuery.customRange[0]
+    params.end = analyticsQuery.customRange[1]
+  }
+  const data = await getPage('/repair-orders/analytics', params)
+  Object.assign(analyticsData, data || {})
+  await nextTick()
+  renderCharts()
+}
+const initChart = (inst, el) => (inst || echarts.init(el))
+const renderCharts = () => {
+  if (!isAdmin.value || !trendChartRef.value) return
+  trendChart = initChart(trendChart, trendChartRef.value)
+  faultChart = initChart(faultChart, faultChartRef.value)
+  maintainerChart = initChart(maintainerChart, maintainerChartRef.value)
+  satisfactionChart = initChart(satisfactionChart, satisfactionChartRef.value)
+  const trend = analyticsData.timeTrend || []
+  trendChart.setOption({ title:{text:'报修/完工趋势'}, tooltip:{trigger:'axis'}, xAxis:{type:'category',data:trend.map(v=>v.bucket)}, yAxis:{type:'value'}, series:[{name:'报修数量',type:'bar',data:trend.map(v=>v.reportCount||0)},{name:'已完成数量',type:'line',data:trend.map(v=>v.finishedCount||0)}] })
+  const faultRank = analyticsData.faultReasonDistribution || []
+  faultChart.setOption({ title:{text:'故障原因分布（点击联动）'}, tooltip:{trigger:'item'}, xAxis:{type:'category',data:faultRank.map(v=>v.name)}, yAxis:{type:'value'}, series:[{type:'bar',data:faultRank.map(v=>v.value||0)}] })
+  faultChart.off('click'); faultChart.on('click', p => applyDrilldown({ faultType: faultRank[p.dataIndex]?.name || '' }))
+  const maintainer = analyticsData.maintainerOrderCount || []
+  maintainerChart.setOption({ title:{text:'维修人员工单数（点击联动）'}, tooltip:{trigger:'item'}, xAxis:{type:'category',data:maintainer.map(v=>v.name)}, yAxis:{type:'value'}, series:[{type:'bar',data:maintainer.map(v=>v.value||0)}] })
+  maintainerChart.off('click'); maintainerChart.on('click', p => {
+    const name = maintainer[p.dataIndex]?.name
+    const m = (maintainers.value || []).find(v => v.realName === name)
+    applyDrilldown({ assignMaintainerId: m ? m.id : '' })
+  })
+  const satisfaction = analyticsData.satisfactionStats?.distribution || []
+  satisfactionChart.setOption({ title:{text:'用户满意度统计'}, tooltip:{trigger:'item'}, series:[{type:'pie',radius:'60%',data:satisfaction.map(v=>({name:v.name,value:v.value}))}] })
+}
 const canAction = (row, action) => {
   if (action === 'ADMIN_APPROVE' || action === 'ADMIN_REJECT') return isAdmin.value && row.status === '已提交/待审核'
   if (action === 'MAINTAINER_ACCEPT') return isMaintainer.value && row.status === '待接单'
@@ -181,5 +257,14 @@ const canAction = (row, action) => {
   if (action === 'MAINTAINER_FINISH') return isMaintainer.value && row.status === '维修中'
   return false
 }
-onMounted(async()=>{await load();const d=await getPage('/devices/page',{current:1,size:100});devices.value=d.records||[];if(isAdmin.value){maintainers.value=await getPage('/users/list-by-role',{role:'maintainer'})}})
+onMounted(async()=>{
+  await load()
+  const d=await getPage('/devices/page',{current:1,size:100})
+  devices.value=d.records||[]
+  if(isAdmin.value){
+    maintainers.value=await getPage('/users/list-by-role',{role:'maintainer'})
+    await loadAnalytics()
+  }
+})
+onBeforeUnmount(()=>{ trendChart?.dispose(); faultChart?.dispose(); maintainerChart?.dispose(); satisfactionChart?.dispose() })
 </script>

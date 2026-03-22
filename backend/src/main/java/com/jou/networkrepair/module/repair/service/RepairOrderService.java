@@ -16,12 +16,18 @@ import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
 public interface RepairOrderService {
-    Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority, String sortField, String sortOrder);
-    Page<RepairOrder> myPage(Long current, Long size, String status, String orderNo, String priority, Long userId, String role, String sortField, String sortOrder);
+    Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority,
+                           String deviceType, String faultType, Long assignMaintainerId, Integer applyDelay, Integer needPurchaseParts,
+                           LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd, String sortField, String sortOrder);
+    Page<RepairOrder> myPage(Long current, Long size, String status, String orderNo, String priority,
+                             String deviceType, String faultType, Integer applyDelay, Integer needPurchaseParts,
+                             LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd,
+                             Long userId, String role, String sortField, String sortOrder);
     RepairOrder detail(Long id, Long userId, String role);
     void create(RepairOrderCreateDTO dto, Long userId);
     void update(Long id, RepairOrder req);
@@ -36,6 +42,7 @@ public interface RepairOrderService {
     void close(Long id, RepairOrderCloseDTO dto, Long userId);
     void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role);
     Map<String, Object> stats(Long userId, String role);
+    Map<String, Object> analytics(String rangeType, String start, String end);
     Map<String, Object> feedbackStats();
     Page<Map<String, Object>> lowSatisfactionOrders(Long current, Long size, Integer threshold);
     Page<Map<String, Object>> unresolvedFeedbackOrders(Long current, Long size);

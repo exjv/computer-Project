@@ -28,6 +28,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,9 +47,18 @@ public class RepairOrderController {
                                              @RequestParam(required = false) String title,
                                              @RequestParam(required = false) String orderNo,
                                              @RequestParam(required = false) String priority,
+                                             @RequestParam(required = false) String deviceType,
+                                             @RequestParam(required = false) String faultType,
+                                             @RequestParam(required = false) Long assignMaintainerId,
+                                             @RequestParam(required = false) Integer applyDelay,
+                                             @RequestParam(required = false) Integer needPurchaseParts,
+                                             @RequestParam(required = false) String reportTimeStart,
+                                             @RequestParam(required = false) String reportTimeEnd,
                                              @RequestParam(required = false, defaultValue = "id") String sortField,
                                              @RequestParam(required = false, defaultValue = "desc") String sortOrder) {
-        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, sortField, sortOrder));
+        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, deviceType, faultType,
+                assignMaintainerId, applyDelay, needPurchaseParts,
+                parseDateTime(reportTimeStart), parseDateTime(reportTimeEnd), sortField, sortOrder));
     }
 
     @GetMapping("/my")
@@ -56,12 +66,19 @@ public class RepairOrderController {
                                            @RequestParam(required = false) String status,
                                            @RequestParam(required = false) String orderNo,
                                            @RequestParam(required = false) String priority,
+                                           @RequestParam(required = false) String deviceType,
+                                           @RequestParam(required = false) String faultType,
+                                           @RequestParam(required = false) Integer applyDelay,
+                                           @RequestParam(required = false) Integer needPurchaseParts,
+                                           @RequestParam(required = false) String reportTimeStart,
+                                           @RequestParam(required = false) String reportTimeEnd,
                                            @RequestParam(required = false, defaultValue = "id") String sortField,
                                            @RequestParam(required = false, defaultValue = "desc") String sortOrder,
                                            HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         String role = (String) request.getAttribute("role");
-        return ApiResult.success(repairOrderService.myPage(current, size, status, orderNo, priority, userId, role, sortField, sortOrder));
+        return ApiResult.success(repairOrderService.myPage(current, size, status, orderNo, priority, deviceType, faultType, applyDelay, needPurchaseParts,
+                parseDateTime(reportTimeStart), parseDateTime(reportTimeEnd), userId, role, sortField, sortOrder));
     }
 
     @GetMapping("/{id}")
@@ -158,6 +175,14 @@ public class RepairOrderController {
         return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
+    @GetMapping("/analytics")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
+    public ApiResult<Map<String, Object>> analytics(@RequestParam(required = false, defaultValue = "month") String rangeType,
+                                                    @RequestParam(required = false) String start,
+                                                    @RequestParam(required = false) String end) {
+        return ApiResult.success(repairOrderService.analytics(rangeType, start, end));
+    }
+
     @GetMapping("/feedback/statistics")
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
     public ApiResult<Map<String, Object>> feedbackStats() {
@@ -229,5 +254,14 @@ public class RepairOrderController {
         attachment.setRemark(dto.getRemark());
         fileAttachmentMapper.insert(attachment);
         return ApiResult.success("上传记录成功", null);
+    }
+
+    private LocalDateTime parseDateTime(String value) {
+        if (value == null || value.trim().isEmpty()) return null;
+        try {
+            return LocalDateTime.parse(value.trim().replace(" ", "T"));
+        } catch (Exception ignore) {
+            return null;
+        }
     }
 }

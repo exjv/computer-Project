@@ -36,7 +36,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -57,24 +61,42 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     private final RepairFeedbackMapper repairFeedbackMapper;
 
     @Override
-    public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority, String sortField, String sortOrder) {
+    public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority,
+                                  String deviceType, String faultType, Long assignMaintainerId, Integer applyDelay, Integer needPurchaseParts,
+                                  LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd, String sortField, String sortOrder) {
         LambdaQueryWrapper<RepairOrder> wrapper = new LambdaQueryWrapper<RepairOrder>()
                 .eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status)
                 .like(title != null && !title.isEmpty(), RepairOrder::getTitle, title)
                 .like(orderNo != null && !orderNo.isEmpty(), RepairOrder::getOrderNo, orderNo)
-                .eq(priority != null && !priority.isEmpty(), RepairOrder::getPriority, priority);
+                .eq(priority != null && !priority.isEmpty(), RepairOrder::getPriority, priority)
+                .like(deviceType != null && !deviceType.isEmpty(), RepairOrder::getDeviceType, deviceType)
+                .like(faultType != null && !faultType.isEmpty(), RepairOrder::getFaultType, faultType)
+                .eq(assignMaintainerId != null, RepairOrder::getAssignMaintainerId, assignMaintainerId)
+                .eq(applyDelay != null, RepairOrder::getApplyDelay, applyDelay)
+                .eq(needPurchaseParts != null, RepairOrder::getNeedPurchaseParts, needPurchaseParts)
+                .ge(reportTimeStart != null, RepairOrder::getReportTime, reportTimeStart)
+                .le(reportTimeEnd != null, RepairOrder::getReportTime, reportTimeEnd);
         applySort(wrapper, sortField, sortOrder);
         return repairOrderMapper.selectPage(new Page<>(current, size), wrapper);
     }
 
     @Override
-    public Page<RepairOrder> myPage(Long current, Long size, String status, String orderNo, String priority, Long userId, String role, String sortField, String sortOrder) {
+    public Page<RepairOrder> myPage(Long current, Long size, String status, String orderNo, String priority,
+                                    String deviceType, String faultType, Integer applyDelay, Integer needPurchaseParts,
+                                    LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd,
+                                    Long userId, String role, String sortField, String sortOrder) {
         LambdaQueryWrapper<RepairOrder> qw = new LambdaQueryWrapper<>();
         if ("user".equals(role)) qw.eq(RepairOrder::getReporterId, userId);
         if ("maintainer".equals(role)) qw.eq(RepairOrder::getAssignMaintainerId, userId);
         qw.eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status)
                 .like(orderNo != null && !orderNo.isEmpty(), RepairOrder::getOrderNo, orderNo)
-                .eq(priority != null && !priority.isEmpty(), RepairOrder::getPriority, priority);
+                .eq(priority != null && !priority.isEmpty(), RepairOrder::getPriority, priority)
+                .like(deviceType != null && !deviceType.isEmpty(), RepairOrder::getDeviceType, deviceType)
+                .like(faultType != null && !faultType.isEmpty(), RepairOrder::getFaultType, faultType)
+                .eq(applyDelay != null, RepairOrder::getApplyDelay, applyDelay)
+                .eq(needPurchaseParts != null, RepairOrder::getNeedPurchaseParts, needPurchaseParts)
+                .ge(reportTimeStart != null, RepairOrder::getReportTime, reportTimeStart)
+                .le(reportTimeEnd != null, RepairOrder::getReportTime, reportTimeEnd);
         applySort(qw, sortField, sortOrder);
         return repairOrderMapper.selectPage(new Page<>(current, size), qw);
     }
@@ -443,6 +465,38 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         }
         fillPredictionStats(map, userId, role);
         return map;
+    }
+
+    @Override
+    public Map<String, Object> analytics(String rangeType, String start, String end) {
+        TimeRange tr = resolveRange(rangeType, start, end);
+        List<RepairOrder> orders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .ge(RepairOrder::getReportTime, tr.start)
+                .le(RepairOrder::getReportTime, tr.end));
+        List<RepairFeedback> feedbacks = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
+                .ge(RepairFeedback::getConfirmTime, tr.start)
+                .le(RepairFeedback::getConfirmTime, tr.end));
+
+        Map<String, Object> data = new HashMap<>();
+        long finishedCount = orders.stream().filter(o -> RepairOrderStatusEnum.FINISHED.getLabel().equals(o.getStatus())).count();
+        data.put("rangeType", tr.rangeType);
+        data.put("rangeStart", tr.start);
+        data.put("rangeEnd", tr.end);
+        data.put("repairCount", orders.size());
+        data.put("finishedCount", finishedCount);
+        data.put("unfinishedCount", Math.max(0, orders.size() - finishedCount));
+        data.put("avgRepairHours", avgRepairHours(orders));
+        data.put("deviceTypeRank", toRank(orders, RepairOrder::getDeviceType, null, "deviceType"));
+        data.put("highFaultDeviceRank", toRank(orders, RepairOrder::getDeviceCode, null, "deviceCode"));
+        data.put("faultReasonDistribution", toRank(orders, RepairOrder::getFaultType, null, "faultType"));
+        data.put("maintainerOrderCount", toRank(orders, RepairOrder::getAssignMaintainerName, null, "assignMaintainerName"));
+        data.put("maintainerAvgHours", maintainerAvgHours(orders));
+        data.put("satisfactionStats", satisfactionStats(feedbacks));
+        data.put("delayOrderRatio", ratio(orders.stream().filter(o -> o.getApplyDelay() != null && o.getApplyDelay() == 1).count(), orders.size()));
+        data.put("partsPurchaseRatio", ratio(orders.stream().filter(o -> o.getNeedPurchaseParts() != null && o.getNeedPurchaseParts() == 1).count(), orders.size()));
+        data.put("predictionAnalysis", predictionAnalysis(orders));
+        data.put("timeTrend", buildTrend(orders, tr));
+        return data;
     }
 
     @Override
@@ -882,6 +936,158 @@ public class RepairOrderServiceImpl implements RepairOrderService {
                         + "；反馈：" + (dto.getFeedbackContent() == null ? "无" : dto.getFeedbackContent()));
     }
 
+    private TimeRange resolveRange(String rangeType, String start, String end) {
+        String normalized = rangeType == null ? "month" : rangeType.trim().toLowerCase();
+        LocalDate now = LocalDate.now();
+        if ("day".equals(normalized)) {
+            return new TimeRange("day", now.atStartOfDay(), now.atTime(LocalTime.MAX));
+        }
+        if ("halfyear".equals(normalized)) {
+            LocalDate begin = now.withDayOfMonth(1).minusMonths(5);
+            return new TimeRange("halfyear", begin.atStartOfDay(), now.atTime(LocalTime.MAX));
+        }
+        if ("year".equals(normalized)) {
+            LocalDate begin = now.withDayOfYear(1);
+            return new TimeRange("year", begin.atStartOfDay(), now.atTime(LocalTime.MAX));
+        }
+        if ("custom".equals(normalized) && start != null && end != null) {
+            LocalDateTime customStart = parseDateTime(start, true);
+            LocalDateTime customEnd = parseDateTime(end, false);
+            if (customStart != null && customEnd != null && !customEnd.isBefore(customStart)) {
+                return new TimeRange("custom", customStart, customEnd);
+            }
+        }
+        LocalDate begin = now.withDayOfMonth(1);
+        return new TimeRange("month", begin.atStartOfDay(), now.atTime(LocalTime.MAX));
+    }
+
+    private LocalDateTime parseDateTime(String value, boolean startOfDay) {
+        if (value == null || value.trim().isEmpty()) return null;
+        String v = value.trim();
+        try {
+            if (v.length() <= 10) {
+                LocalDate d = LocalDate.parse(v);
+                return startOfDay ? d.atStartOfDay() : d.atTime(LocalTime.MAX);
+            }
+            return LocalDateTime.parse(v.replace(" ", "T"));
+        } catch (Exception ignore) {
+            return null;
+        }
+    }
+
+    private double avgRepairHours(List<RepairOrder> orders) {
+        return orders.stream()
+                .filter(o -> o.getStartRepairTime() != null && o.getFinishTime() != null && !o.getFinishTime().isBefore(o.getStartRepairTime()))
+                .mapToDouble(o -> Duration.between(o.getStartRepairTime(), o.getFinishTime()).toMinutes() / 60D)
+                .average().orElse(0D);
+    }
+
+    private List<Map<String, Object>> maintainerAvgHours(List<RepairOrder> orders) {
+        Map<String, Double> avgMap = orders.stream()
+                .filter(o -> o.getAssignMaintainerName() != null && !o.getAssignMaintainerName().trim().isEmpty())
+                .filter(o -> o.getStartRepairTime() != null && o.getFinishTime() != null && !o.getFinishTime().isBefore(o.getStartRepairTime()))
+                .collect(Collectors.groupingBy(RepairOrder::getAssignMaintainerName,
+                        Collectors.averagingDouble(o -> Duration.between(o.getStartRepairTime(), o.getFinishTime()).toMinutes() / 60D)));
+        return avgMap.entrySet().stream()
+                .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
+                .map(e -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("name", e.getKey());
+                    item.put("value", e.getValue());
+                    Map<String, Object> filters = new HashMap<>();
+                    filters.put("assignMaintainerName", e.getKey());
+                    item.put("filters", filters);
+                    return item;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private List<Map<String, Object>> toRank(List<RepairOrder> orders, java.util.function.Function<RepairOrder, String> fn,
+                                             Integer limit, String filterKey) {
+        Map<String, Long> grouped = orders.stream()
+                .map(fn)
+                .filter(v -> v != null && !v.trim().isEmpty())
+                .collect(Collectors.groupingBy(v -> v, Collectors.counting()));
+        return grouped.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .limit(limit == null ? 10 : limit)
+                .map(e -> {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("name", e.getKey());
+                    row.put("value", e.getValue());
+                    Map<String, Object> filters = new HashMap<>();
+                    filters.put(filterKey, e.getKey());
+                    row.put("filters", filters);
+                    return row;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private Map<String, Object> satisfactionStats(List<RepairFeedback> feedbacks) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("count", feedbacks.size());
+        map.put("avgScore", feedbacks.stream()
+                .filter(v -> v.getSatisfactionScore() != null)
+                .mapToInt(RepairFeedback::getSatisfactionScore).average().orElse(0D));
+        Map<Integer, Long> distribution = feedbacks.stream()
+                .filter(v -> v.getSatisfactionScore() != null)
+                .collect(Collectors.groupingBy(RepairFeedback::getSatisfactionScore, Collectors.counting()));
+        List<Map<String, Object>> distList = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("name", i + "分");
+            row.put("score", i);
+            row.put("value", distribution.getOrDefault(i, 0L));
+            distList.add(row);
+        }
+        map.put("distribution", distList);
+        map.put("unresolvedCount", feedbacks.stream().filter(v -> "未解决".equals(v.getConfirmResult())).count());
+        return map;
+    }
+
+    private Map<String, Object> predictionAnalysis(List<RepairOrder> orders) {
+        List<RepairOrder> comparable = orders.stream()
+                .filter(o -> o.getExpectedFinishTime() != null && o.getFinishTime() != null)
+                .collect(Collectors.toList());
+        Map<String, Object> map = new HashMap<>();
+        map.put("count", comparable.size());
+        double avgError = comparable.stream()
+                .mapToDouble(o -> Math.abs(Duration.between(o.getExpectedFinishTime(), o.getFinishTime()).toMinutes()) / 60D)
+                .average().orElse(0D);
+        map.put("avgAbsErrorHours", avgError);
+        map.put("within4h", comparable.stream().filter(o -> Math.abs(Duration.between(o.getExpectedFinishTime(), o.getFinishTime()).toMinutes()) <= 240).count());
+        map.put("within24h", comparable.stream().filter(o -> Math.abs(Duration.between(o.getExpectedFinishTime(), o.getFinishTime()).toMinutes()) <= 1440).count());
+        return map;
+    }
+
+    private List<Map<String, Object>> buildTrend(List<RepairOrder> orders, TimeRange tr) {
+        boolean monthly = "year".equals(tr.rangeType) || "halfyear".equals(tr.rangeType) ||
+                ChronoUnit.DAYS.between(tr.start.toLocalDate(), tr.end.toLocalDate()) > 62;
+        DateTimeFormatter fmt = monthly ? DateTimeFormatter.ofPattern("yyyy-MM") : DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        Map<String, Long> reportCount = orders.stream().filter(o -> o.getReportTime() != null)
+                .collect(Collectors.groupingBy(o -> o.getReportTime().format(fmt), TreeMap::new, Collectors.counting()));
+        Map<String, Long> finishedCount = orders.stream()
+                .filter(o -> o.getFinishTime() != null && RepairOrderStatusEnum.FINISHED.getLabel().equals(o.getStatus()))
+                .collect(Collectors.groupingBy(o -> o.getFinishTime().format(fmt), TreeMap::new, Collectors.counting()));
+        Set<String> axis = new LinkedHashSet<>();
+        axis.addAll(reportCount.keySet());
+        axis.addAll(finishedCount.keySet());
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (String key : axis) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("bucket", key);
+            row.put("reportCount", reportCount.getOrDefault(key, 0L));
+            row.put("finishedCount", finishedCount.getOrDefault(key, 0L));
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    private double ratio(long num, long den) {
+        if (den <= 0) return 0D;
+        return ((double) num / (double) den) * 100D;
+    }
+
     private Page<Map<String, Object>> pageFeedbackOrders(Long current, Long size, LambdaQueryWrapper<RepairFeedback> wrapper) {
         Page<RepairFeedback> feedbackPage = repairFeedbackMapper.selectPage(new Page<>(current, size), wrapper);
         Page<Map<String, Object>> result = new Page<>(feedbackPage.getCurrent(), feedbackPage.getSize(), feedbackPage.getTotal());
@@ -948,5 +1154,17 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             return;
         }
         wrapper.orderBy(true, asc, RepairOrder::getId);
+    }
+
+    private static class TimeRange {
+        private final String rangeType;
+        private final LocalDateTime start;
+        private final LocalDateTime end;
+
+        private TimeRange(String rangeType, LocalDateTime start, LocalDateTime end) {
+            this.rangeType = rangeType;
+            this.start = start;
+            this.end = end;
+        }
     }
 }
