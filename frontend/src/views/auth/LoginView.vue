@@ -57,7 +57,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { captchaApi, oauthUrlApi } from '../../api'
+import { captchaApi, oauthCallbackApi, oauthUrlApi } from '../../api'
 import { useUserStore } from '../../stores/user'
 
 const router = useRouter()
@@ -96,7 +96,9 @@ const onLogin = async () => {
 
 const onThirdParty = async (provider) => {
   const data = await oauthUrlApi(provider)
-  ElMessage.info(`${provider} 授权地址已生成：${data.authorizeUrl}`)
+  const callback = await oauthCallbackApi(provider, 'demo-code')
+  ElMessage.info(`${provider} 预留流程已触发，模拟openId：${callback.openId}`)
+  console.log('OAuth placeholder authorizeUrl:', data.authorizeUrl)
 }
 
 onMounted(async () => {

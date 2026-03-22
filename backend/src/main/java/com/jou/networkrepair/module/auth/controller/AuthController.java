@@ -10,6 +10,8 @@ import com.jou.networkrepair.module.auth.service.CaptchaService;
 import com.jou.networkrepair.module.auth.vo.LoginVO;
 import com.jou.networkrepair.module.log.entity.LoginLog;
 import com.jou.networkrepair.module.log.mapper.LoginLogMapper;
+import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
+import com.jou.networkrepair.module.v2.auth2.mapper.ThirdPartyBindMapper;
 import com.jou.networkrepair.module.v2.rbac.entity.Role;
 import com.jou.networkrepair.module.v2.rbac.entity.UserRole;
 import com.jou.networkrepair.module.v2.rbac.mapper.RoleMapper;
@@ -43,6 +45,7 @@ public class AuthController {
     private final UserRoleMapper userRoleMapper;
     private final RoleMapper roleMapper;
     private final RbacPermissionService rbacPermissionService;
+    private final ThirdPartyBindMapper thirdPartyBindMapper;
 
     @GetMapping("/captcha")
     public ApiResult<Map<String, String>> captcha() {
@@ -94,12 +97,16 @@ public class AuthController {
         SysUser user = userMapper.selectById(userId);
         List<String> roleCodes = queryRoleCodes(user);
         Set<String> permissions = rbacPermissionService.permissionsByRoles(roleCodes);
+        List<ThirdPartyBind> binds = thirdPartyBindMapper.selectList(new LambdaQueryWrapper<ThirdPartyBind>()
+                .eq(ThirdPartyBind::getUserId, userId)
+                .eq(ThirdPartyBind::getStatus, 1));
         Map<String, Object> map = new HashMap<>();
         map.put("id", user.getId()); map.put("username", user.getUsername()); map.put("realName", user.getRealName());
         map.put("phone", user.getPhone()); map.put("email", user.getEmail());
         map.put("role", request.getAttribute("role"));
         map.put("roles", roleCodes);
         map.put("permissions", permissions);
+        map.put("thirdPartyBinds", binds.stream().map(ThirdPartyBind::getPlatform).collect(Collectors.toList()));
         return ApiResult.success(map);
     }
 

@@ -65,7 +65,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { oauthUrlApi, portalHomeApi } from '../../api'
+import { oauthCallbackApi, oauthUrlApi, portalHomeApi } from '../../api'
 
 const router = useRouter()
 const noticeRef = ref()
@@ -86,7 +86,9 @@ const goLogin = (role) => {
 
 const oauth = async (provider) => {
   const data = await oauthUrlApi(provider)
-  ElMessage.info(`${provider} 授权地址已预留：${data.authorizeUrl}`)
+  const callback = await oauthCallbackApi(provider, 'demo-code')
+  ElMessage.info(`${provider} 登录预留已触发：${callback.tip}`)
+  console.log('OAuth placeholder authorizeUrl:', data.authorizeUrl)
 }
 
 const scrollToNotice = () => noticeRef.value?.scrollIntoView({ behavior: 'smooth' })
