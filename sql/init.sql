@@ -2,27 +2,90 @@ DROP DATABASE IF EXISTS network_repair;
 CREATE DATABASE network_repair DEFAULT CHARACTER SET utf8mb4;
 USE network_repair;
 
-CREATE TABLE sys_user (
+-- ======================
+-- 基础组织模型
+-- ======================
+CREATE TABLE `user` (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  employee_no VARCHAR(30) NOT NULL UNIQUE,
-  username VARCHAR(50) NOT NULL UNIQUE,
+  employee_no VARCHAR(30) NOT NULL COMMENT '工号（全局唯一）',
+  username VARCHAR(50) NOT NULL,
   password VARCHAR(100) NOT NULL,
-  real_name VARCHAR(50),
+  real_name VARCHAR(50) NOT NULL,
   phone VARCHAR(20),
   email VARCHAR(100),
   department VARCHAR(100),
-  role VARCHAR(20) NOT NULL,
-  status TINYINT DEFAULT 1,
+  role VARCHAR(20) NOT NULL COMMENT '兼容旧结构角色字段',
+  status TINYINT DEFAULT 1 COMMENT '1启用 0禁用',
   last_login_time DATETIME,
   wx_open_id VARCHAR(100),
   qq_open_id VARCHAR(100),
-  create_time DATETIME,
-  update_time DATETIME
-);
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_user_employee_no (employee_no),
+  UNIQUE KEY uk_user_username (username)
+) COMMENT='用户表';
 
-CREATE TABLE network_device (
+CREATE TABLE `role` (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  device_code VARCHAR(50) NOT NULL UNIQUE,
+  role_code VARCHAR(50) NOT NULL,
+  role_name VARCHAR(50) NOT NULL,
+  role_status VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
+  remark VARCHAR(255),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_role_code (role_code)
+) COMMENT='角色表';
+
+CREATE TABLE user_role (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  role_id BIGINT NOT NULL,
+  create_time DATETIME NOT NULL,
+  UNIQUE KEY uk_user_role (user_id, role_id),
+  CONSTRAINT fk_user_role_user FOREIGN KEY (user_id) REFERENCES `user`(id),
+  CONSTRAINT fk_user_role_role FOREIGN KEY (role_id) REFERENCES `role`(id)
+) COMMENT='用户角色关联表';
+
+CREATE TABLE permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  permission_code VARCHAR(80) NOT NULL,
+  permission_name VARCHAR(100) NOT NULL,
+  permission_type VARCHAR(20) NOT NULL DEFAULT 'API',
+  status VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
+  remark VARCHAR(255),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_permission_code (permission_code)
+) COMMENT='权限表';
+
+CREATE TABLE role_permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  role_id BIGINT NOT NULL,
+  permission_id BIGINT NOT NULL,
+  create_time DATETIME NOT NULL,
+  UNIQUE KEY uk_role_permission (role_id, permission_id),
+  CONSTRAINT fk_role_permission_role FOREIGN KEY (role_id) REFERENCES `role`(id),
+  CONSTRAINT fk_role_permission_permission FOREIGN KEY (permission_id) REFERENCES permission(id)
+) COMMENT='角色权限关联表';
+
+CREATE TABLE device_type (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  type_code VARCHAR(50) NOT NULL,
+  type_name VARCHAR(50) NOT NULL,
+  sort_no INT DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
+  remark VARCHAR(255),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_device_type_code (type_code)
+) COMMENT='设备类型表';
+
+-- ======================
+-- 设备与工单
+-- ======================
+CREATE TABLE device (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  device_code VARCHAR(50) NOT NULL COMMENT '设备编号（唯一）',
   device_name VARCHAR(100) NOT NULL,
   device_type VARCHAR(50),
   brand VARCHAR(100),
@@ -37,7 +100,11 @@ CREATE TABLE network_device (
   brand_model VARCHAR(100),
   ip_address VARCHAR(50),
   mac_address VARCHAR(50),
-  location VARCHAR(100),
+  campus VARCHAR(100),
+  building VARCHAR(100),
+  machine_room VARCHAR(100),
+  office VARCHAR(100),
+  location VARCHAR(150),
   purchase_date DATE,
   status VARCHAR(20),
   last_fault_time DATETIME,
@@ -52,66 +119,135 @@ CREATE TABLE network_device (
 
 CREATE TABLE repair_order (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  order_no VARCHAR(50) NOT NULL UNIQUE,
+  order_no VARCHAR(50) NOT NULL COMMENT '工单编号（唯一）',
+  reporter_id BIGINT NOT NULL COMMENT '报修用户',
+  reporter_employee_no VARCHAR(30) NOT NULL COMMENT '报修人工号',
+  reporter_name VARCHAR(50),
+  contact_phone VARCHAR(20),
+  reporter_department VARCHAR(100),
+  report_location VARCHAR(150),
   device_id BIGINT NOT NULL,
-  reporter_id BIGINT NOT NULL,
+  device_code VARCHAR(50) NOT NULL,
+  device_name VARCHAR(100),
+  device_type VARCHAR(50),
   title VARCHAR(100) NOT NULL,
+  fault_type VARCHAR(50),
   description TEXT,
-  priority VARCHAR(20),
-  status VARCHAR(20),
-  assign_maintainer_id BIGINT,
-  progress INT DEFAULT 0,
-  report_time DATETIME,
+  priority VARCHAR(20) NOT NULL COMMENT 'LOW/MEDIUM/HIGH',
+  affect_wide_area_network TINYINT DEFAULT 0,
+  report_time DATETIME NOT NULL,
   audit_time DATETIME,
   audit_by BIGINT,
+  audit_by_employee_no VARCHAR(30),
+  audit_by_name VARCHAR(50),
   assign_time DATETIME,
+  assign_by BIGINT,
+  assign_by_employee_no VARCHAR(30),
+  assign_by_name VARCHAR(50),
+  assign_maintainer_id BIGINT,
+  assign_maintainer_employee_no VARCHAR(30),
+  assign_maintainer_name VARCHAR(50),
   accept_time DATETIME,
   start_repair_time DATETIME,
+  status VARCHAR(30) NOT NULL COMMENT 'SUBMITTED/APPROVED/ASSIGNED/ACCEPTED/IN_PROGRESS/PENDING_ACCEPTANCE/COMPLETED/CLOSED/CANCELED',
+  progress INT DEFAULT 0,
+  need_purchase_parts TINYINT DEFAULT 0,
+  parts_description VARCHAR(500),
+  apply_delay TINYINT DEFAULT 0,
+  original_expected_finish_time DATETIME,
+  delayed_expected_finish_time DATETIME,
   expected_finish_time DATETIME,
   finish_time DATETIME,
   confirm_time DATETIME,
+  user_confirm_result VARCHAR(30),
   satisfaction_score INT,
   feedback VARCHAR(500),
   close_reason VARCHAR(255),
-  create_time DATETIME,
-  update_time DATETIME
-);
+  remark VARCHAR(500),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_repair_order_no (order_no),
+  KEY idx_repair_order_status (status),
+  CONSTRAINT fk_repair_order_reporter FOREIGN KEY (reporter_id) REFERENCES `user`(id),
+  CONSTRAINT fk_repair_order_device FOREIGN KEY (device_id) REFERENCES device(id),
+  CONSTRAINT fk_repair_order_auditor FOREIGN KEY (audit_by) REFERENCES `user`(id),
+  CONSTRAINT fk_repair_order_assigner FOREIGN KEY (assign_by) REFERENCES `user`(id),
+  CONSTRAINT fk_repair_order_maintainer FOREIGN KEY (assign_maintainer_id) REFERENCES `user`(id)
+) COMMENT='工单表';
 
 CREATE TABLE repair_order_flow (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   repair_order_id BIGINT NOT NULL,
-  from_status VARCHAR(20),
-  to_status VARCHAR(20),
-  action VARCHAR(40),
+  from_status VARCHAR(30),
+  to_status VARCHAR(30),
+  action VARCHAR(50),
+  operation_type VARCHAR(50),
   operator_id BIGINT,
+  operator_employee_no VARCHAR(30),
+  operator_name VARCHAR(50),
   operator_role VARCHAR(20),
   remark VARCHAR(500),
-  create_time DATETIME
-);
+  create_time DATETIME NOT NULL,
+  KEY idx_flow_order (repair_order_id),
+  CONSTRAINT fk_repair_order_flow_order FOREIGN KEY (repair_order_id) REFERENCES repair_order(id),
+  CONSTRAINT fk_repair_order_flow_operator FOREIGN KEY (operator_id) REFERENCES `user`(id)
+) COMMENT='工单流程记录表';
 
 CREATE TABLE repair_record (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   repair_order_id BIGINT NOT NULL,
+  repair_order_no VARCHAR(50),
   device_id BIGINT NOT NULL,
+  device_code VARCHAR(50),
   maintainer_id BIGINT NOT NULL,
+  maintainer_employee_no VARCHAR(30),
+  maintainer_name VARCHAR(50),
   fault_reason VARCHAR(255),
   process_detail TEXT,
   result_detail TEXT,
   is_resolved TINYINT,
+  used_parts TINYINT DEFAULT 0,
+  used_parts_desc VARCHAR(500),
+  labor_hours INT,
+  repair_conclusion VARCHAR(500),
   repair_time DATETIME,
-  create_time DATETIME,
-  update_time DATETIME
-);
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  CONSTRAINT fk_repair_record_order FOREIGN KEY (repair_order_id) REFERENCES repair_order(id),
+  CONSTRAINT fk_repair_record_device FOREIGN KEY (device_id) REFERENCES device(id),
+  CONSTRAINT fk_repair_record_maintainer FOREIGN KEY (maintainer_id) REFERENCES `user`(id)
+) COMMENT='维修记录表';
 
-CREATE TABLE notice (
+CREATE TABLE repair_feedback (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  repair_order_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  user_employee_no VARCHAR(30) NOT NULL,
+  confirm_result VARCHAR(30),
+  satisfaction_score INT,
+  feedback_content VARCHAR(1000),
+  confirm_time DATETIME,
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  CONSTRAINT fk_repair_feedback_order FOREIGN KEY (repair_order_id) REFERENCES repair_order(id),
+  CONSTRAINT fk_repair_feedback_user FOREIGN KEY (user_id) REFERENCES `user`(id)
+) COMMENT='用户反馈表';
+
+CREATE TABLE announcement (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   title VARCHAR(100) NOT NULL,
   content TEXT,
   publisher_id BIGINT,
-  create_time DATETIME,
-  update_time DATETIME
-);
+  status VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED',
+  sort_no INT DEFAULT 0,
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  CONSTRAINT fk_announcement_publisher FOREIGN KEY (publisher_id) REFERENCES `user`(id)
+) COMMENT='公告表';
 
+-- ======================
+-- 日志、附件、字典、三方绑定
+-- ======================
 CREATE TABLE operation_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT,
@@ -121,15 +257,35 @@ CREATE TABLE operation_log (
   operation_desc VARCHAR(255),
   request_method VARCHAR(20),
   request_url VARCHAR(255),
+  request_params VARCHAR(1000),
+  response_code VARCHAR(20),
+  trace_id VARCHAR(64),
   ip VARCHAR(50),
-  operation_time DATETIME
-);
+  operation_time DATETIME NOT NULL,
+  CONSTRAINT fk_operation_log_user FOREIGN KEY (user_id) REFERENCES `user`(id)
+) COMMENT='系统操作日志表';
+
+CREATE TABLE business_log (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  business_type VARCHAR(50) NOT NULL,
+  business_no VARCHAR(50) NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  operator_id BIGINT,
+  operator_employee_no VARCHAR(30),
+  operator_name VARCHAR(50),
+  content VARCHAR(1000),
+  status VARCHAR(20),
+  create_time DATETIME NOT NULL,
+  KEY idx_business_no (business_no),
+  CONSTRAINT fk_business_log_user FOREIGN KEY (operator_id) REFERENCES `user`(id)
+) COMMENT='业务日志表';
 
 CREATE TABLE login_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT,
   username VARCHAR(50),
   ip VARCHAR(50),
+  user_agent VARCHAR(255),
   login_status VARCHAR(20),
   login_time DATETIME
 );

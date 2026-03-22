@@ -9,7 +9,7 @@ import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 
 @Data
-@TableName("sys_user")
+@TableName("`user`")
 public class SysUser {
     private Long id;
     @NotBlank(message = "工号不能为空")

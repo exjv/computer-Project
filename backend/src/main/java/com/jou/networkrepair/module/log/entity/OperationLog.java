@@ -16,6 +16,9 @@ public class OperationLog {
     private String operationDesc;
     private String requestMethod;
     private String requestUrl;
+    private String requestParams;
+    private String responseCode;
+    private String traceId;
     private String ip;
     private LocalDateTime operationTime;
 }

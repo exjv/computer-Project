@@ -1,11 +1,28 @@
 <template>
-  <div>
-    <h2>首页概览</h2>
+  <div class="home-page">
     <el-row :gutter="16">
-      <el-col :span="6"><el-card>工单总数<div class="num">{{ orderStats.total || 0 }}</div></el-card></el-col>
-      <el-col :span="6"><el-card>待处理工单<div class="num">{{ orderStats.pending || 0 }}</div></el-card></el-col>
-      <el-col :span="6"><el-card>处理中<div class="num">{{ orderStats.processing || 0 }}</div></el-card></el-col>
-      <el-col :span="6"><el-card>已完成<div class="num">{{ orderStats.finished || 0 }}</div></el-card></el-col>
+      <el-col :span="16">
+        <el-card class="intro-card" shadow="hover">
+          <h2>{{ workbench.systemName }}</h2>
+          <p>业务首页聚焦工单协同、维修调度、设备治理与服务质量闭环。</p>
+          <el-tag type="success">所属单位：{{ workbench.campusInfo }}</el-tag>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <template #header>快速入口</template>
+          <div class="entry-grid">
+            <el-button
+              v-for="entry in filteredEntries"
+              :key="entry.name"
+              type="primary"
+              plain
+              @click="router.push(entry.path)">
+              {{ entry.name }}
+            </el-button>
+          </div>
+        </el-card>
+      </el-col>
     </el-row>
 
     <el-row :gutter="16" style="margin-top:16px" v-if="isAdmin">
@@ -164,6 +181,57 @@ const deleteNotice = async row => {
   ElMessage.success('公告已删除')
   await loadNotices()
 }
+
+const editNotice = row => {
+  Object.assign(noticeForm, { ...row })
+  editDialog.value = true
+}
+
+const saveNotice = async () => {
+  if (noticeForm.id) await putApi(`/notices/${noticeForm.id}`, noticeForm)
+  else await postApi('/notices', noticeForm)
+  ElMessage.success('公告保存成功')
+  editDialog.value = false
+  await loadNotices()
+}
+
+const switchStatus = async row => {
+  const next = row.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
+  await putApi(`/notices/${row.id}/status`, { status: next })
+  ElMessage.success('公告状态已更新')
+  await loadNotices()
+}
+
+const deleteNotice = async row => {
+  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
+  await delApi(`/notices/${row.id}`)
+  ElMessage.success('公告已删除')
+  await loadNotices()
+}
+
+const deleteNotice = async row => {
+  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
+  await delApi(`/notices/${row.id}`)
+  ElMessage.success('公告已删除')
+  await loadNotices()
+}
+
+const switchStatus = async row => {
+  const next = row.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
+  await putApi(`/notices/${row.id}/status`, { status: next })
+  ElMessage.success('公告状态已更新')
+  await loadNotices()
+}
+
+const deleteNotice = async row => {
+  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
+  await delApi(`/notices/${row.id}`)
+  ElMessage.success('公告已删除')
+  await loadNotices()
+}
+
+const todoItems = computed(() => Object.keys(workbench.todo || {}).map(key => ({ key, label: todoLabelMap[key] || key, value: workbench.todo[key] })))
+const statItems = computed(() => Object.keys(workbench.stats || {}).map(key => ({ key, label: statLabelMap[key] || key, value: workbench.stats[key] })))
 
 onMounted(async () => {
   Object.assign(orderStats, await getPage('/repair-orders/statistics', {}))
