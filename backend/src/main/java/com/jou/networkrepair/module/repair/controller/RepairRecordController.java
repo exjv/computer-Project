@@ -3,6 +3,7 @@ package com.jou.networkrepair.module.repair.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
+import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairRecordDTO;
 import com.jou.networkrepair.module.repair.entity.RepairRecord;
 import com.jou.networkrepair.module.repair.service.RepairRecordService;
@@ -12,6 +13,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/repair-records")
@@ -38,7 +40,7 @@ public class RepairRecordController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_RECORD_WRITE + "') || @permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
     @Loggable(module = "维修记录", operationType = "新增", operationDesc = "新增维修记录")
     public ApiResult<Void> add(@RequestBody @Validated RepairRecordDTO dto, HttpServletRequest request) {
         repairRecordService.create(dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
@@ -46,7 +48,7 @@ public class RepairRecordController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_RECORD_WRITE + "') || @permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
     @Loggable(module = "维修记录", operationType = "修改", operationDesc = "修改维修记录")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody @Validated RepairRecordDTO dto, HttpServletRequest request) {
         repairRecordService.update(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
@@ -54,10 +56,16 @@ public class RepairRecordController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
     @Loggable(module = "维修记录", operationType = "删除", operationDesc = "删除维修记录")
     public ApiResult<Void> delete(@PathVariable Long id) {
         repairRecordService.delete(id);
         return ApiResult.success("删除成功", null);
+    }
+
+    @GetMapping("/device-statistics")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_RECORD_WRITE + "') || @permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
+    public ApiResult<Map<String, Object>> deviceStatistics() {
+        return ApiResult.success(repairRecordService.deviceStatistics());
     }
 }

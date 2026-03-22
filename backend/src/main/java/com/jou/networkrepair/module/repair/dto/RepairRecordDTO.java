@@ -4,6 +4,7 @@ import lombok.Data;
 
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
+import java.time.LocalDateTime;
 
 @Data
 public class RepairRecordDTO {
@@ -20,4 +21,19 @@ public class RepairRecordDTO {
     private String resultDetail;
     @NotNull(message = "是否解决不能为空")
     private Integer isResolved;
+    private Integer usedParts;
+    private String usedPartsDesc;
+    private Integer delayApplied;
+    private String delayReason;
+    private Integer laborHours;
+    private String repairConclusion;
+    private String fixMeasure;
+    private String userConfirmResult;
+    private Integer userSatisfaction;
+    private String photoUrls;
+    private String remark;
+    private LocalDateTime reportTime;
+    private LocalDateTime acceptTime;
+    private LocalDateTime startRepairTime;
+    private LocalDateTime finishTime;
 }

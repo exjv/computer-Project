@@ -2,9 +2,16 @@ package com.jou.networkrepair.module.user.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
+import com.jou.networkrepair.module.system.entity.SysRole;
+import com.jou.networkrepair.module.system.entity.ThirdPartyBind;
+import com.jou.networkrepair.module.system.entity.UserRole;
+import com.jou.networkrepair.module.system.mapper.SysRoleMapper;
+import com.jou.networkrepair.module.system.mapper.ThirdPartyBindMapper;
+import com.jou.networkrepair.module.system.mapper.UserRoleMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
@@ -32,7 +39,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("@permissionService.hasPermission('" + PermissionCode.USER_MANAGE + "')")
 public class UserController {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1\\\\d{10}$");
 
@@ -319,5 +326,39 @@ public class UserController {
         if (exists != null && (id == null || !id.equals(exists.getId()))) {
             throw new BusinessException("工号已存在");
         }
+    }
+
+    private void checkRoleValid(String roleCode) {
+        if (roleCode == null || roleCode.trim().isEmpty()) throw new BusinessException("角色不能为空");
+        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, roleCode));
+        if (role == null) throw new BusinessException("角色不合法：" + roleCode);
+    }
+
+    private void validateUserFields(SysUser user, Long id) {
+        if (user == null) throw new BusinessException("用户数据不能为空");
+        if (user.getEmployeeNo() == null || user.getEmployeeNo().trim().isEmpty()) throw new BusinessException("工号不能为空");
+        if (user.getRealName() == null || user.getRealName().trim().isEmpty()) throw new BusinessException("姓名不能为空");
+        if (user.getRole() == null || user.getRole().trim().isEmpty()) throw new BusinessException("角色不能为空");
+        if (user.getPhone() != null && !user.getPhone().trim().isEmpty() && !PHONE_PATTERN.matcher(user.getPhone()).matches()) {
+            throw new BusinessException("手机号格式不正确");
+        }
+    }
+
+    private String cell(Row row, int idx) {
+        if (row.getCell(idx) == null) return "";
+        row.getCell(idx).setCellType(org.apache.poi.ss.usermodel.CellType.STRING);
+        return row.getCell(idx).getStringCellValue() == null ? "" : row.getCell(idx).getStringCellValue().trim();
+    }
+
+    private void bindUserRole(Long userId, String roleCode) {
+        if (userId == null || roleCode == null || roleCode.trim().isEmpty()) return;
+        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, roleCode));
+        if (role == null) return;
+        userRoleMapper.delete(new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
+        UserRole ur = new UserRole();
+        ur.setUserId(userId);
+        ur.setRoleId(role.getId());
+        ur.setCreateTime(LocalDateTime.now());
+        userRoleMapper.insert(ur);
     }
 }

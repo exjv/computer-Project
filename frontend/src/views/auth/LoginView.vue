@@ -63,6 +63,8 @@ import { useUserStore } from '../../stores/user'
 const router = useRouter()
 const route = useRoute()
 const store = useUserStore()
+const step = ref(1)
+const home = reactive({ campusInfo: '', notices: [] })
 
 const roleMap = { admin: '系统/业务管理员', maintainer: '维修人员', user: '报修用户' }
 const roleOptions = [
@@ -88,9 +90,16 @@ const refreshCaptcha = async () => {
   form.captchaCode = ''
 }
 
+const selectRole = async (role) => {
+  form.role = role
+  step.value = 2
+  await refreshCaptcha()
+}
+
 const onLogin = async () => {
   if (!form.role) return ElMessage.warning('请先选择角色')
   await store.login(form)
+  ElMessage.success('登录成功')
   router.push('/')
 }
 
@@ -121,4 +130,5 @@ onMounted(async () => {
 .captcha-img { width: 140px; height: 44px; border: 1px solid #dcdfe6; border-radius: 4px; cursor: pointer; }
 .captcha-tip { font-size: 12px; color: #909399; margin-top: 4px; }
 .oauth { margin-top: 10px; display: flex; justify-content: space-between; }
+.role-box { display:flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 </style>
