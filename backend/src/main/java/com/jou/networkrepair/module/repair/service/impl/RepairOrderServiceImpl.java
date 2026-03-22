@@ -18,7 +18,9 @@ import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
+import com.jou.networkrepair.module.system.entity.RepairFeedback;
 import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
+import com.jou.networkrepair.module.system.mapper.RepairFeedbackMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     private final RepairDispatchAlgorithm repairDispatchAlgorithm;
     private final RepairOrderFlowMapper repairOrderFlowMapper;
     private final BusinessLogMapper businessLogMapper;
+    private final RepairFeedbackMapper repairFeedbackMapper;
 
     @Override
     public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority, String sortField, String sortOrder) {
@@ -223,12 +226,21 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
             checkStatus(order.getStatus(), RepairOrderStatusEnum.PENDING_CONFIRM.getLabel());
             order.setConfirmTime(LocalDateTime.now());
+            order.setUserConfirmResult("已解决");
+            order.setSatisfactionScore(dto.getSatisfactionScore());
+            order.setFeedback(dto.getFeedbackContent());
             moveStatus(order, RepairOrderStatusEnum.FINISHED.getLabel(), 100, userId, role, dto.getRemark(), action);
+            saveFeedback(order, dto, userId, "已解决");
         } else if ("USER_CONFIRM_UNRESOLVED".equals(action)) {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
             checkStatus(order.getStatus(), RepairOrderStatusEnum.PENDING_CONFIRM.getLabel());
+            order.setConfirmTime(LocalDateTime.now());
+            order.setUserConfirmResult("未解决");
+            order.setSatisfactionScore(dto.getSatisfactionScore());
+            order.setFeedback(dto.getFeedbackContent());
             moveStatus(order, RepairOrderStatusEnum.IN_REPAIR.getLabel(), 60, userId, role, dto.getRemark(), action);
+            saveFeedback(order, dto, userId, "未解决");
         } else {
             throw new BusinessException("不支持的操作");
         }
@@ -451,6 +463,24 @@ public class RepairOrderServiceImpl implements RepairOrderService {
                 fromStatus == null ? "-" : fromStatus, toStatus == null ? "-" : toStatus, role == null ? "-" : role, safeRemark));
         log.setCreateTime(LocalDateTime.now());
         businessLogMapper.insert(log);
+    }
+
+    private void saveFeedback(RepairOrder order, RepairOrderActionDTO dto, Long userId, String confirmResult) {
+        SysUser user = userMapper.selectById(userId);
+        RepairFeedback feedback = new RepairFeedback();
+        feedback.setRepairOrderId(order.getId());
+        feedback.setUserId(userId);
+        feedback.setUserEmployeeNo(user == null ? null : user.getEmployeeNo());
+        feedback.setConfirmResult(confirmResult);
+        feedback.setSatisfactionScore(dto.getSatisfactionScore());
+        feedback.setFeedbackContent(dto.getFeedbackContent());
+        feedback.setConfirmTime(LocalDateTime.now());
+        feedback.setCreateTime(LocalDateTime.now());
+        feedback.setUpdateTime(LocalDateTime.now());
+        repairFeedbackMapper.insert(feedback);
+        addBusinessLog(order, "USER_FEEDBACK", userId, "user", order.getStatus(), order.getStatus(),
+                "确认结果：" + confirmResult + "；满意度：" + (dto.getSatisfactionScore() == null ? "-" : dto.getSatisfactionScore())
+                        + "；反馈：" + (dto.getFeedbackContent() == null ? "无" : dto.getFeedbackContent()));
     }
 
     private void requireRole(String current, String expected) {
