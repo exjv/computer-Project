@@ -4,11 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.security.RbacPermissionService;
 import com.jou.networkrepair.common.exception.BusinessException;
+import com.jou.networkrepair.common.security.PermissionService;
 import com.jou.networkrepair.common.utils.JwtUtil;
 import com.jou.networkrepair.module.auth.dto.LoginDTO;
+import com.jou.networkrepair.module.auth.dto.UpdatePasswordDTO;
 import com.jou.networkrepair.module.auth.service.CaptchaService;
 import com.jou.networkrepair.module.auth.vo.LoginVO;
 import com.jou.networkrepair.module.log.entity.LoginLog;
+import com.jou.networkrepair.module.log.entity.OperationLog;
 import com.jou.networkrepair.module.log.mapper.LoginLogMapper;
 import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
 import com.jou.networkrepair.module.v2.auth2.mapper.ThirdPartyBindMapper;
@@ -43,6 +46,7 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final LoginLogMapper loginLogMapper;
+    private final OperationLogMapper operationLogMapper;
     private final CaptchaService captchaService;
     private final UserRoleMapper userRoleMapper;
     private final RoleMapper roleMapper;
@@ -56,18 +60,22 @@ public class AuthController {
 
     @PostMapping("/login")
     public ApiResult<LoginVO> login(@RequestBody @Validated LoginDTO dto, HttpServletRequest request) {
+        if (!Arrays.asList("admin", "maintainer", "user").contains(dto.getRole())) {
+            saveLoginLog(null, dto.getAccount(), "FAIL_ROLE_SELECT", "角色选择错误", request);
+            throw new BusinessException("角色选择错误");
+        }
         if (!captchaService.verify(dto.getCaptchaKey(), dto.getCaptchaCode())) {
-            saveLoginLog(null, dto.getAccount(), "FAIL_CAPTCHA", request.getRemoteAddr());
+            saveLoginLog(null, dto.getAccount(), "FAIL_CAPTCHA", "验证码错误或已失效", request);
             throw new BusinessException("验证码错误或已失效");
         }
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .and(w -> w.eq(SysUser::getUsername, dto.getAccount()).or().eq(SysUser::getEmployeeNo, dto.getAccount())));
         if (user == null) {
-            saveLoginLog(null, dto.getAccount(), "FAIL_ACCOUNT", request.getRemoteAddr());
+            saveLoginLog(null, dto.getAccount(), "FAIL_ACCOUNT", "账号不存在", request);
             throw new BusinessException("账号不存在");
         }
         if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
-            saveLoginLog(user.getId(), user.getUsername(), "FAIL_PASSWORD", request.getRemoteAddr());
+            saveLoginLog(user.getId(), user.getUsername(), "FAIL_PASSWORD", "密码错误", request);
             throw new BusinessException("密码错误");
         }
         List<String> roleCodes = queryRoleCodes(user);
@@ -76,7 +84,6 @@ public class AuthController {
             saveLoginLog(user.getId(), user.getUsername(), "FAIL_ROLE", request.getRemoteAddr());
             throw new BusinessException("角色选择错误或无权限使用该入口");
         }
-        if (user.getStatus() == 0) throw new BusinessException("账号已禁用");
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
         saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", request.getRemoteAddr());
@@ -113,7 +120,7 @@ public class AuthController {
     }
 
     @PutMapping("/updatePassword")
-    public ApiResult<Void> updatePassword(@RequestBody Map<String, String> body, HttpServletRequest request) {
+    public ApiResult<Void> updatePassword(@RequestBody @Validated UpdatePasswordDTO body, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         String ip = request.getRemoteAddr();
         if (userId == null) {
@@ -180,9 +187,15 @@ public class AuthController {
     @PostMapping("/logout")
     public ApiResult<Void> logout() { return ApiResult.success("退出成功", null); }
 
-    private void saveLoginLog(Long userId, String username, String loginStatus, String ip) {
+    private void saveLoginLog(Long userId, String username, String loginStatus, String failReason, HttpServletRequest request) {
         LoginLog log = new LoginLog();
-        log.setUserId(userId); log.setUsername(username); log.setIp(ip); log.setLoginStatus(loginStatus); log.setLoginTime(LocalDateTime.now());
+        log.setUserId(userId);
+        log.setUsername(username);
+        log.setIp(request.getRemoteAddr());
+        log.setUserAgent(request.getHeader("User-Agent"));
+        log.setLoginStatus(loginStatus);
+        log.setFailReason(failReason);
+        log.setLoginTime(LocalDateTime.now());
         loginLogMapper.insert(log);
     }
 
