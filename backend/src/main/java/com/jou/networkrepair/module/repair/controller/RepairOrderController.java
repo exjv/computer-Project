@@ -7,7 +7,11 @@ import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderActionDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAttachmentDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderAuditDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderCloseDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderDelayApproveDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
@@ -101,6 +105,13 @@ public class RepairOrderController {
         return ApiResult.success("操作成功", null);
     }
 
+    @PutMapping("/{id}/audit")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_APPROVE + "')")
+    public ApiResult<Void> audit(@PathVariable Long id, @RequestBody @Validated RepairOrderAuditDTO dto, HttpServletRequest request) {
+        repairOrderService.audit(id, dto, (Long) request.getAttribute("userId"));
+        return ApiResult.success("审核处理成功", null);
+    }
+
     @GetMapping("/{id}/flows")
     public ApiResult<List<RepairOrderFlow>> flows(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
@@ -109,6 +120,27 @@ public class RepairOrderController {
     @GetMapping("/{id}/business-logs")
     public ApiResult<List<BusinessLog>> businessLogs(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.businessLogs(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @PutMapping("/{id}/reassign")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
+    public ApiResult<Void> reassign(@PathVariable Long id, @RequestBody @Validated RepairOrderReassignDTO dto, HttpServletRequest request) {
+        repairOrderService.reassign(id, dto, (Long) request.getAttribute("userId"));
+        return ApiResult.success("改派成功", null);
+    }
+
+    @PutMapping("/{id}/delay-approve")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_APPROVE + "')")
+    public ApiResult<Void> approveDelay(@PathVariable Long id, @RequestBody @Validated RepairOrderDelayApproveDTO dto, HttpServletRequest request) {
+        repairOrderService.approveDelay(id, dto, (Long) request.getAttribute("userId"));
+        return ApiResult.success("延期审批完成", null);
+    }
+
+    @PutMapping("/{id}/close")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
+    public ApiResult<Void> close(@PathVariable Long id, @RequestBody @Validated RepairOrderCloseDTO dto, HttpServletRequest request) {
+        repairOrderService.close(id, dto, (Long) request.getAttribute("userId"));
+        return ApiResult.success("关闭处理成功", null);
     }
 
     @PutMapping("/{id}/status")

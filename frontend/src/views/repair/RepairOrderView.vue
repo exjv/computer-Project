@@ -30,6 +30,9 @@
         <template #default="s">
           <el-button link @click="goDetail(s.row)">详情</el-button>
           <el-button v-if="isAdmin && s.row.status==='待分配'" link @click="assign(s.row)">分配</el-button>
+          <el-button v-if="isAdmin && canReassign(s.row)" link @click="reassign(s.row)">改派</el-button>
+          <el-button v-if="isAdmin && s.row.status==='申请延期中'" link @click="openDelayApprove(s.row)">审批延期</el-button>
+          <el-button v-if="isAdmin && (s.row.status==='已完成' || s.row.status!=='已关闭')" link type="danger" @click="openClose(s.row)">关闭/强制关闭</el-button>
           <el-button v-if="canAction(s.row,'ADMIN_APPROVE')" link @click="quickAction(s.row,'ADMIN_APPROVE')">审核通过</el-button>
           <el-button v-if="canAction(s.row,'ADMIN_REJECT')" link @click="quickAction(s.row,'ADMIN_REJECT')">审核驳回</el-button>
           <el-button v-if="canAction(s.row,'MAINTAINER_ACCEPT')" link @click="quickAction(s.row,'MAINTAINER_ACCEPT')">接单</el-button>
@@ -59,6 +62,9 @@
     </el-dialog>
 
     <el-dialog v-model="assignDialog" title="分配维修人员"><el-form :model="assignForm"><el-form-item label="维修人员"><el-select v-model="assignForm.assignMaintainerId"><el-option v-for="m in maintainers" :key="m.id" :label="m.realName+'('+m.username+')'" :value="m.id"/></el-select></el-form-item></el-form><template #footer><el-button @click="assignDialog=false">取消</el-button><el-button type="primary" @click="saveAssign">保存</el-button></template></el-dialog>
+    <el-dialog v-model="reassignDialog" title="改派维修人员"><el-form :model="reassignForm"><el-form-item label="维修人员"><el-select v-model="reassignForm.assignMaintainerId"><el-option v-for="m in maintainers" :key="m.id" :label="m.realName+'('+m.username+')'" :value="m.id"/></el-select></el-form-item><el-form-item label="备注"><el-input type="textarea" v-model="reassignForm.remark"/></el-form-item></el-form><template #footer><el-button @click="reassignDialog=false">取消</el-button><el-button type="primary" @click="saveReassign">保存</el-button></template></el-dialog>
+    <el-dialog v-model="delayDialog" title="延期审批"><el-form :model="delayForm"><el-form-item label="审批结果"><el-radio-group v-model="delayForm.approved"><el-radio :label="true">通过</el-radio><el-radio :label="false">驳回</el-radio></el-radio-group></el-form-item><el-form-item label="延期完成时间"><el-date-picker v-model="delayForm.delayedExpectedFinishTime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss"/></el-form-item><el-form-item label="备注"><el-input type="textarea" v-model="delayForm.remark"/></el-form-item></el-form><template #footer><el-button @click="delayDialog=false">取消</el-button><el-button type="primary" @click="saveDelayApprove">提交</el-button></template></el-dialog>
+    <el-dialog v-model="closeDialog" title="关闭工单"><el-form :model="closeForm"><el-form-item label="关闭类型"><el-radio-group v-model="closeForm.forceClose"><el-radio :label="false">正常关闭</el-radio><el-radio :label="true">强制关闭</el-radio></el-radio-group></el-form-item><el-form-item label="关闭原因"><el-input type="textarea" v-model="closeForm.closeReason"/></el-form-item></el-form><template #footer><el-button @click="closeDialog=false">取消</el-button><el-button type="primary" @click="saveClose">提交</el-button></template></el-dialog>
     <el-dialog v-model="statusDialog" title="修改工单状态"><el-form :model="statusForm"><el-form-item label="状态"><el-select v-model="statusForm.status"><el-option v-for="s in allStatus" :key="s" :label="s" :value="s"/></el-select></el-form-item></el-form><template #footer><el-button @click="statusDialog=false">取消</el-button><el-button type="primary" @click="saveStatus">保存</el-button></template></el-dialog>
   </div>
 </template>
@@ -79,8 +85,12 @@ const allStatus = ['待提交','已提交/待审核','审核通过','审核驳�
 const query=reactive({orderNo:'',title:'',priority:'',status:'',sortField:'id',sortOrder:'desc'}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
 const devices=ref([]),maintainers=ref([])
 const addDialog=ref(false),assignDialog=ref(false),statusDialog=ref(false),editMode=ref(false)
+const reassignDialog=ref(false),delayDialog=ref(false),closeDialog=ref(false)
 const form=reactive({id:null,deviceId:'',title:'',description:'',priority:'中'})
 const assignForm=reactive({id:null,assignMaintainerId:null}),statusForm=reactive({id:null,status:'维修中'})
+const reassignForm=reactive({id:null,assignMaintainerId:null,remark:''})
+const delayForm=reactive({id:null,approved:true,delayedExpectedFinishTime:'',remark:''})
+const closeForm=reactive({id:null,forceClose:false,closeReason:''})
 const apiPath = computed(()=>isAdmin.value?'/repair-orders/page':'/repair-orders/my')
 const load = async()=>{const r=await getPage(apiPath.value,{...query,...page});list.value=r.records;total.value=r.total}
 const reset=()=>{Object.assign(query,{orderNo:'',title:'',priority:'',status:'',sortField:'id',sortOrder:'desc'});load()}
@@ -88,6 +98,13 @@ const openAdd=()=>{editMode.value=false;Object.assign(form,{id:null,deviceId:'',
 const save=async()=>{if(editMode.value){await putApi(`/repair-orders/${form.id}`,form);ElMessage.success('修改成功')}else{await postApi('/repair-orders',form);ElMessage.success('提交成功')}addDialog.value=false;load()}
 const assign=(row)=>{assignForm.id=row.id;assignForm.assignMaintainerId=row.assignMaintainerId;assignDialog.value=true}
 const saveAssign=async()=>{await putApi(`/repair-orders/${assignForm.id}/assign`,assignForm);ElMessage.success('分配成功');assignDialog.value=false;load()}
+const canReassign=(row)=>['待接单','维修人员已接单','维修中'].includes(row.status)
+const reassign=(row)=>{reassignForm.id=row.id;reassignForm.assignMaintainerId=row.assignMaintainerId;reassignForm.remark='';reassignDialog.value=true}
+const saveReassign=async()=>{await putApi(`/repair-orders/${reassignForm.id}/reassign`,reassignForm);ElMessage.success('改派成功');reassignDialog.value=false;load()}
+const openDelayApprove=(row)=>{delayForm.id=row.id;delayForm.approved=true;delayForm.delayedExpectedFinishTime='';delayForm.remark='';delayDialog.value=true}
+const saveDelayApprove=async()=>{await putApi(`/repair-orders/${delayForm.id}/delay-approve`,delayForm);ElMessage.success('延期审批完成');delayDialog.value=false;load()}
+const openClose=(row)=>{closeForm.id=row.id;closeForm.forceClose=false;closeForm.closeReason='';closeDialog.value=true}
+const saveClose=async()=>{await putApi(`/repair-orders/${closeForm.id}/close`,closeForm);ElMessage.success('关闭处理成功');closeDialog.value=false;load()}
 const changeStatus=(row)=>{statusForm.id=row.id;statusForm.status=row.status;statusDialog.value=true}
 const saveStatus=async()=>{await putApi(`/repair-orders/${statusForm.id}/status`,statusForm);ElMessage.success('状态更新成功');statusDialog.value=false;load()}
 const autoDispatch=async()=>{const r=await autoDispatchApi();ElMessage.success(`自动分配完成，共分配${r.count}条工单`);load()}
