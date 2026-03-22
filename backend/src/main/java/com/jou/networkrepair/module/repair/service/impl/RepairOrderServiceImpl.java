@@ -163,12 +163,29 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             checkStatus(order.getStatus(), "待接单");
             order.setAcceptTime(LocalDateTime.now());
             moveStatus(order, "维修人员已接单", 45, userId, role, dto.getRemark(), action);
+        } else if ("MAINTAINER_REJECT".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), "待接单");
+            moveStatus(order, "待分配", 30, userId, role, dto.getRemark() == null ? "维修人员拒单，退回待分配" : dto.getRemark(), action);
         } else if ("MAINTAINER_START".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
             checkStatus(order.getStatus(), "维修人员已接单");
             order.setStartRepairTime(LocalDateTime.now());
             moveStatus(order, "维修中", 60, userId, role, dto.getRemark(), action);
+        } else if ("MAINTAINER_DELAY_APPLY".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), "维修中");
+            addFlow(order.getId(), order.getStatus(), order.getStatus(), action, userId, role,
+                    dto.getRemark() == null ? "申请延期" : dto.getRemark());
+        } else if ("MAINTAINER_PARTS_APPLY".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), "维修中");
+            addFlow(order.getId(), order.getStatus(), order.getStatus(), action, userId, role,
+                    dto.getRemark() == null ? "申请配件" : dto.getRemark());
         } else if ("MAINTAINER_PROGRESS".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
@@ -196,6 +213,29 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
             checkStatus(order.getStatus(), "待验收");
             moveStatus(order, "维修中", 60, userId, role, dto.getRemark(), action);
+        } else if ("ADMIN_REASSIGN".equals(action)) {
+            requireRole(role, "admin");
+            if (dto.getAssignMaintainerId() == null) throw new BusinessException("改派时必须指定新的维修人员");
+            SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
+            if (maintainer == null || !"maintainer".equals(maintainer.getRole()) || maintainer.getStatus() == null || maintainer.getStatus() != 1) {
+                throw new BusinessException("维修人员无效或不可用");
+            }
+            order.setAssignMaintainerId(dto.getAssignMaintainerId());
+            order.setAssignTime(LocalDateTime.now());
+            order.setStatus("待接单");
+            order.setProgress(35);
+            order.setUpdateTime(LocalDateTime.now());
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), "待分配", "待接单", action, userId, role, dto.getRemark() == null ? "管理员改派" : dto.getRemark());
+        } else if ("ADMIN_DELAY_APPROVE".equals(action)) {
+            requireRole(role, "admin");
+            checkStatus(order.getStatus(), "维修中");
+            addFlow(order.getId(), order.getStatus(), order.getStatus(), action, userId, role,
+                    dto.getRemark() == null ? "管理员审批延期" : dto.getRemark());
+        } else if ("ADMIN_CLOSE".equals(action)) {
+            requireRole(role, "admin");
+            if (Arrays.asList("已完成", "已关闭", "已取消").contains(order.getStatus())) throw new BusinessException("终态工单不允许重复关闭");
+            moveStatus(order, "已关闭", 100, userId, role, dto.getRemark(), action);
         } else {
             throw new BusinessException("不支持的操作");
         }

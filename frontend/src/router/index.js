@@ -1,18 +1,19 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { ROUTE_ROLE_MAP } from '../constants/rbac'
 
 const routes = [
   { path: '/portal', component: () => import('../views/auth/PortalView.vue') },
   { path: '/login', component: () => import('../views/auth/LoginView.vue') },
   { path: '/', component: () => import('../layout/MainLayout.vue'), children: [
-    { path: '', component: () => import('../views/dashboard/HomeView.vue') },
-    { path: 'users', component: () => import('../views/user/UserView.vue') },
-    { path: 'devices', component: () => import('../views/device/DeviceView.vue') },
-    { path: 'repair-orders', component: () => import('../views/repair/RepairOrderView.vue') },
-    { path: 'repair-records', component: () => import('../views/record/RepairRecordView.vue') },
-    { path: 'notices', component: () => import('../views/notice/NoticeView.vue') },
-    { path: 'logs', component: () => import('../views/log/LogView.vue') },
-    { path: 'profile', component: () => import('../views/profile/ProfileView.vue') }
+    { path: '', component: () => import('../views/dashboard/HomeView.vue'), meta: { roles: ROUTE_ROLE_MAP['/'] } },
+    { path: 'users', component: () => import('../views/user/UserView.vue'), meta: { roles: ROUTE_ROLE_MAP['/users'] } },
+    { path: 'devices', component: () => import('../views/device/DeviceView.vue'), meta: { roles: ROUTE_ROLE_MAP['/devices'] } },
+    { path: 'repair-orders', component: () => import('../views/repair/RepairOrderView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-orders'] } },
+    { path: 'repair-records', component: () => import('../views/record/RepairRecordView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-records'] } },
+    { path: 'notices', component: () => import('../views/notice/NoticeView.vue'), meta: { roles: ROUTE_ROLE_MAP['/notices'] } },
+    { path: 'logs', component: () => import('../views/log/LogView.vue'), meta: { roles: ROUTE_ROLE_MAP['/logs'] } },
+    { path: 'profile', component: () => import('../views/profile/ProfileView.vue'), meta: { roles: ROUTE_ROLE_MAP['/profile'] } }
   ] }
 ]
 
@@ -22,6 +23,8 @@ router.beforeEach(async (to) => {
   if (to.path === '/login' || to.path === '/portal') return true
   if (!store.token) return '/portal'
   if (!store.userInfo.role) await store.fetchUserInfo()
+  const targetRoles = to.meta.roles || []
+  if (targetRoles.length && !store.hasAnyRole(targetRoles)) return '/'
   return true
 })
 export default router

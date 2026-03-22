@@ -2,6 +2,7 @@ package com.jou.networkrepair.module.auth.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.common.api.ApiResult;
+import com.jou.networkrepair.common.security.RbacPermissionService;
 import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.common.utils.JwtUtil;
 import com.jou.networkrepair.module.auth.dto.LoginDTO;
@@ -9,6 +10,10 @@ import com.jou.networkrepair.module.auth.service.CaptchaService;
 import com.jou.networkrepair.module.auth.vo.LoginVO;
 import com.jou.networkrepair.module.log.entity.LoginLog;
 import com.jou.networkrepair.module.log.mapper.LoginLogMapper;
+import com.jou.networkrepair.module.v2.rbac.entity.Role;
+import com.jou.networkrepair.module.v2.rbac.entity.UserRole;
+import com.jou.networkrepair.module.v2.rbac.mapper.RoleMapper;
+import com.jou.networkrepair.module.v2.rbac.mapper.UserRoleMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -18,8 +23,13 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -30,6 +40,9 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final LoginLogMapper loginLogMapper;
     private final CaptchaService captchaService;
+    private final UserRoleMapper userRoleMapper;
+    private final RoleMapper roleMapper;
+    private final RbacPermissionService rbacPermissionService;
 
     @GetMapping("/captcha")
     public ApiResult<Map<String, String>> captcha() {
@@ -52,7 +65,9 @@ public class AuthController {
             saveLoginLog(user.getId(), user.getUsername(), "FAIL_PASSWORD", request.getRemoteAddr());
             throw new BusinessException("密码错误");
         }
-        if (!dto.getRole().equals(user.getRole())) {
+        List<String> roleCodes = queryRoleCodes(user);
+        String selectedRole = rbacPermissionService.normalizeRole(dto.getRole());
+        if (!roleCodes.contains(selectedRole)) {
             saveLoginLog(user.getId(), user.getUsername(), "FAIL_ROLE", request.getRemoteAddr());
             throw new BusinessException("角色选择错误或无权限使用该入口");
         }
@@ -60,7 +75,7 @@ public class AuthController {
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
         saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", request.getRemoteAddr());
-        return ApiResult.success(new LoginVO(jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole()), user.getRole(), user.getUsername()));
+        return ApiResult.success(new LoginVO(jwtUtil.generateToken(user.getId(), user.getUsername(), selectedRole, roleCodes), selectedRole, user.getUsername()));
     }
 
     @GetMapping("/oauth/{provider}/url")
@@ -77,9 +92,14 @@ public class AuthController {
     public ApiResult<Map<String, Object>> userInfo(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         SysUser user = userMapper.selectById(userId);
+        List<String> roleCodes = queryRoleCodes(user);
+        Set<String> permissions = rbacPermissionService.permissionsByRoles(roleCodes);
         Map<String, Object> map = new HashMap<>();
         map.put("id", user.getId()); map.put("username", user.getUsername()); map.put("realName", user.getRealName());
-        map.put("phone", user.getPhone()); map.put("email", user.getEmail()); map.put("role", user.getRole());
+        map.put("phone", user.getPhone()); map.put("email", user.getEmail());
+        map.put("role", request.getAttribute("role"));
+        map.put("roles", roleCodes);
+        map.put("permissions", permissions);
         return ApiResult.success(map);
     }
 
@@ -116,5 +136,20 @@ public class AuthController {
         LoginLog log = new LoginLog();
         log.setUserId(userId); log.setUsername(username); log.setIp(ip); log.setLoginStatus(loginStatus); log.setLoginTime(LocalDateTime.now());
         loginLogMapper.insert(log);
+    }
+
+    private List<String> queryRoleCodes(SysUser user) {
+        if (user == null) return new ArrayList<>();
+        List<UserRole> userRoles = userRoleMapper.selectList(new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, user.getId()));
+        Set<Long> roleIds = userRoles.stream().map(UserRole::getRoleId).collect(Collectors.toSet());
+        Set<String> roleCodes = new HashSet<>();
+        if (!roleIds.isEmpty()) {
+            List<Role> roles = roleMapper.selectList(new LambdaQueryWrapper<Role>().in(Role::getId, roleIds));
+            roleCodes.addAll(roles.stream().map(Role::getRoleCode).map(rbacPermissionService::normalizeRole).collect(Collectors.toSet()));
+        }
+        if (roleCodes.isEmpty() && user.getRole() != null && !user.getRole().trim().isEmpty()) {
+            roleCodes.add(rbacPermissionService.normalizeRole(user.getRole()));
+        }
+        return new ArrayList<>(roleCodes);
     }
 }

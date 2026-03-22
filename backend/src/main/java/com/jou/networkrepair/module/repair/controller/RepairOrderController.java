@@ -38,6 +38,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/my")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Page<RepairOrder>> my(@RequestParam Long current, @RequestParam Long size,
                                            @RequestParam(required = false) String status,
                                            @RequestParam(required = false) String orderNo,
@@ -49,6 +50,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<RepairOrder> get(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
@@ -86,12 +88,14 @@ public class RepairOrderController {
     }
 
     @PutMapping("/{id}/action")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Void> action(@PathVariable Long id, @RequestBody @Validated RepairOrderActionDTO dto, HttpServletRequest request) {
         repairOrderService.action(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("操作成功", null);
     }
 
     @GetMapping("/{id}/flows")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<List<RepairOrderFlow>> flows(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
@@ -105,6 +109,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/statistics")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Map<String, Object>> stats(HttpServletRequest request) {
         return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }

@@ -7,9 +7,7 @@
 
       <el-divider>角色入口</el-divider>
       <div class="roles">
-        <el-button type="primary" @click="toLogin('admin')">系统/业务管理员</el-button>
-        <el-button type="warning" @click="toLogin('maintainer')">维修人员</el-button>
-        <el-button type="info" @click="toLogin('user')">报修用户</el-button>
+        <el-button type="primary" @click="toLogin()">进入企业级登录门户</el-button>
       </div>
 
       <el-divider>通知公告</el-divider>
@@ -33,7 +31,7 @@ import { portalHomeApi } from '../../api'
 const router = useRouter()
 const home = reactive({ systemName: '', systemDesc: '', campusInfo: '', notices: [] })
 
-const toLogin = (role) => router.push({ path: '/login', query: { role } })
+const toLogin = () => router.push({ path: '/login' })
 
 onMounted(async () => {
   Object.assign(home, await portalHomeApi())
