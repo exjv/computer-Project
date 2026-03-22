@@ -58,6 +58,19 @@ public class RepairDispatchAlgorithm {
         return X * unfinishedCount + Y * processingCount;
     }
 
+    /**
+     * 综合负载值（可解释版）：
+     * - 未完成工单数
+     * - 正在处理中工单数
+     * - 历史平均处理时长（小时）
+     * - 设备能力匹配度（0~1，越高越匹配）
+     */
+    public double calcMaintainerLoadDetailed(long unfinishedCount, long processingCount, double avgHandleHours, double skillMatchScore) {
+        double normalizedDuration = Math.min(72D, Math.max(0D, avgHandleHours)) / 72D * 10D;
+        double skillPenalty = (1D - Math.max(0D, Math.min(1D, skillMatchScore))) * 5D;
+        return 0.35D * unfinishedCount + 0.35D * processingCount + 0.20D * normalizedDuration + 0.10D * skillPenalty;
+    }
+
     private double estimateDeviceWeight(NetworkDevice device) {
         if (device == null) return DeviceLevelEnum.TERMINAL.weight();
         String type = device.getDeviceType() == null ? "" : device.getDeviceType();

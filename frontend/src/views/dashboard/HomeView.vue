@@ -1,54 +1,136 @@
 <template>
-  <div>
-    <h2>首页概览</h2>
+  <div class="home-page">
     <el-row :gutter="16">
-      <el-col :span="6"><el-card>工单总数<div class="num">{{ orderStats.total || 0 }}</div></el-card></el-col>
-      <el-col :span="6"><el-card>待处理工单<div class="num">{{ orderStats.pending || 0 }}</div></el-card></el-col>
-      <el-col :span="6"><el-card>处理中<div class="num">{{ orderStats.processing || 0 }}</div></el-card></el-col>
-      <el-col :span="6"><el-card>已完成<div class="num">{{ orderStats.finished || 0 }}</div></el-card></el-col>
+      <el-col :span="16">
+        <el-card class="intro-card" shadow="hover">
+          <h2>{{ workbench.systemName }}</h2>
+          <p>业务首页聚焦工单协同、维修调度、设备治理与服务质量闭环。</p>
+          <el-tag type="success">所属单位：{{ workbench.campusInfo }}</el-tag>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <template #header>快速入口</template>
+          <div class="entry-grid">
+            <el-button
+              v-for="entry in filteredEntries"
+              :key="entry.name"
+              type="primary"
+              plain
+              @click="router.push(entry.path)">
+              {{ entry.name }}
+            </el-button>
+          </div>
+        </el-card>
+      </el-col>
     </el-row>
-    <el-row :gutter="16" style="margin-top:16px" v-if="user.userInfo.role==='admin'">
-      <el-col :span="8"><el-card>设备总数<div class="num">{{ deviceStats.total || 0 }}</div></el-card></el-col>
-      <el-col :span="8"><el-card>正常设备数<div class="num">{{ deviceStats.normal || 0 }}</div></el-card></el-col>
-      <el-col :span="8"><el-card>故障设备数<div class="num">{{ deviceStats.fault || 0 }}</div></el-card></el-col>
+
+    <el-row :gutter="16" style="margin-top: 16px">
+      <el-col :span="12">
+        <el-card shadow="hover">
+          <template #header>待办工单</template>
+          <el-empty v-if="!todoItems.length" description="暂无待办"/>
+          <div v-else class="todo-list">
+            <div class="todo-item" v-for="item in todoItems" :key="item.key">
+              <span>{{ item.label }}</span>
+              <el-tag type="warning">{{ item.value }}</el-tag>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card shadow="hover">
+          <template #header>统计摘要</template>
+          <el-empty v-if="!statItems.length" description="暂无统计"/>
+          <div v-else class="todo-list">
+            <div class="todo-item" v-for="item in statItems" :key="item.key">
+              <span>{{ item.label }}</span>
+              <el-tag type="success">{{ item.value }}</el-tag>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
     </el-row>
-    <el-row :gutter="16" style="margin-top:16px" v-if="user.userInfo.role==='admin'">
-      <el-col :span="8"><el-card><div class="chart-title">设备状态分布</div><div ref="deviceChartRef" class="chart"/></el-card></el-col>
-      <el-col :span="8"><el-card><div class="chart-title">工单趋势</div><div ref="trendChartRef" class="chart"/></el-card></el-col>
-      <el-col :span="8"><el-card><div class="chart-title">完成率统计</div><div ref="rateChartRef" class="chart"/></el-card></el-col>
+
+    <el-row :gutter="16" style="margin-top: 16px">
+      <el-col :span="24">
+        <el-card shadow="hover">
+          <template #header>当前通知公告</template>
+          <el-timeline>
+            <el-timeline-item v-for="n in workbench.notices || []" :key="n.id" :timestamp="n.createTime">
+              <el-card shadow="never">
+                <h4>{{ n.title }}</h4>
+                <div>{{ n.content }}</div>
+              </el-card>
+            </el-timeline-item>
+          </el-timeline>
+        </el-card>
+      </el-col>
     </el-row>
   </div>
 </template>
+
 <script setup>
-import { reactive, onMounted, ref, nextTick } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { getPage } from '../../api'
 import { useUserStore } from '../../stores/user'
-import * as echarts from 'echarts'
-const user = useUserStore()
-const orderStats = reactive({})
-const deviceStats = reactive({})
-const deviceChartRef=ref(), trendChartRef=ref(), rateChartRef=ref()
 
-const renderCharts=()=>{
-  const d=echarts.init(deviceChartRef.value)
-  d.setOption({tooltip:{},series:[{type:'pie',data:[{name:'正常',value:deviceStats.normal||0},{name:'故障',value:deviceStats.fault||0}],radius:'65%'}]})
-  const t=echarts.init(trendChartRef.value)
-  t.setOption({xAxis:{type:'category',data:['待处理','处理中','已完成']},yAxis:{type:'value'},series:[{type:'bar',data:[orderStats.pending||0,orderStats.processing||0,orderStats.finished||0]}]})
-  const r=echarts.init(rateChartRef.value)
-  const finishRate=(orderStats.total?((orderStats.finished||0)/orderStats.total*100):0).toFixed(1)
-  r.setOption({series:[{type:'gauge',center:['50%','65%'],radius:'78%',min:0,max:100,axisLine:{lineStyle:{width:14}},progress:{show:true,width:14},splitLine:{length:10,distance:-16},axisTick:{distance:-18,length:5},axisLabel:{distance:16,fontSize:10},title:{offsetCenter:[0,'45%'],fontSize:14},detail:{fontSize:24,offsetCenter:[0,'68%'],formatter:(v)=>`${v}%`},data:[{value:Number(finishRate),name:'完成率'}]}]})
+const router = useRouter()
+const store = useUserStore()
+const workbench = reactive({ systemName: '', campusInfo: '', notices: [], quickEntries: [], todo: {}, stats: {} })
+
+const permissionMap = {
+  '工单审批': 'repair:order:approve',
+  '设备管理': 'device:manage',
+  '用户管理': 'user:manage',
+  '日志审计': 'log:operation:view',
+  '我的待接单': 'repair:order:accept',
+  '维修记录': 'repair:record:write',
+  '设备档案': 'device:manage',
+  '发起报修': 'repair:order:create',
+  '我的工单': 'repair:order:view:self',
+  '个人中心': ''
 }
 
+const filteredEntries = computed(() =>
+  (workbench.quickEntries || []).filter(e => {
+    const code = permissionMap[e.name]
+    return !code || store.permissions.includes(code)
+  })
+)
+
+const todoLabelMap = {
+  pendingApprove: '待审批工单',
+  pendingAssign: '待分配工单',
+  pendingAccept: '待接单工单',
+  processing: '处理中工单',
+  myOpenOrders: '我的进行中工单',
+  myPendingConfirm: '我的待验收工单'
+}
+
+const statLabelMap = {
+  deviceTotal: '设备总数',
+  deviceFault: '故障设备数',
+  orderTotal: '工单总数',
+  orderFinished: '已完成工单',
+  myAccepted: '我已接单',
+  myFinished: '我已完成',
+  myReported: '我发起工单'
+}
+
+const todoItems = computed(() => Object.keys(workbench.todo || {}).map(key => ({ key, label: todoLabelMap[key] || key, value: workbench.todo[key] })))
+const statItems = computed(() => Object.keys(workbench.stats || {}).map(key => ({ key, label: statLabelMap[key] || key, value: workbench.stats[key] })))
+
 onMounted(async () => {
-  Object.assign(orderStats, await getPage('/repair-orders/statistics', {}))
-  if (user.userInfo.role === 'admin') {
-    Object.assign(deviceStats, await getPage('/devices/statistics', {}))
-    await nextTick(); renderCharts()
-  }
+  Object.assign(workbench, await getPage('/portal/workbench', {}))
 })
 </script>
+
 <style scoped>
-.num{font-size:28px;font-weight:700;color:#409eff;margin-top:8px}
-.chart{height:220px}
-.chart-title{font-weight:600;margin-bottom:8px}
+.home-page { min-height: 100%; }
+.intro-card h2 { margin: 0 0 8px; }
+.entry-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.todo-list { display: flex; flex-direction: column; gap: 10px; }
+.todo-item { display: flex; justify-content: space-between; align-items: center; }
 </style>
