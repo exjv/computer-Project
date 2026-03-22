@@ -18,12 +18,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class, ConstraintViolationException.class})
     public ApiResult<Void> handleValidation(Exception ex) {
         if (ex instanceof MethodArgumentNotValidException) {
-            return ApiResult.fail(((MethodArgumentNotValidException) ex).getBindingResult().getFieldError().getDefaultMessage());
+            MethodArgumentNotValidException e = (MethodArgumentNotValidException) ex;
+            String msg = e.getBindingResult().getFieldError() == null ? "参数校验失败" : e.getBindingResult().getFieldError().getDefaultMessage();
+            return ApiResult.fail(400, msg);
         }
         if (ex instanceof BindException) {
-            return ApiResult.fail(((BindException) ex).getBindingResult().getFieldError().getDefaultMessage());
+            BindException e = (BindException) ex;
+            String msg = e.getBindingResult().getFieldError() == null ? "参数绑定失败" : e.getBindingResult().getFieldError().getDefaultMessage();
+            return ApiResult.fail(400, msg);
         }
-        return ApiResult.fail(ex.getMessage());
+        return ApiResult.fail(400, ex.getMessage());
     }
 
     @ExceptionHandler(RuntimeException.class)

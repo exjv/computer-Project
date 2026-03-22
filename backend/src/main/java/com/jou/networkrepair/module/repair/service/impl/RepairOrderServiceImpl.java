@@ -32,7 +32,8 @@ import java.util.concurrent.ThreadLocalRandom;
 public class RepairOrderServiceImpl implements RepairOrderService {
     private static final Set<String> PRIORITY_SET = new HashSet<>(Arrays.asList("低", "中", "高"));
     private static final Set<String> STATUS_SET = new HashSet<>(Arrays.asList(
-            "已提交", "审核通过", "审核驳回", "待分配", "待接单", "维修人员已接单", "维修中", "待验收", "已完成", "已关闭", "已取消"));
+            "待提交", "已提交/待审核", "审核通过", "审核驳回", "待分配", "已分配", "待接单", "维修人员已接单", "维修中",
+            "待采购/待配件", "申请延期中", "延期已批准", "待验收/待确认", "已完成", "已关闭", "已取消"));
 
     private final RepairOrderMapper repairOrderMapper;
     private final DeviceMapper deviceMapper;
@@ -85,13 +86,13 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setPriority(dto.getPriority());
         order.setReporterId(userId);
         order.setOrderNo(generateOrderNo());
-        order.setStatus("已提交");
-        order.setProgress(5);
+        order.setStatus("已提交/待审核");
+        order.setProgress(10);
         order.setReportTime(LocalDateTime.now());
         order.setCreateTime(LocalDateTime.now());
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.insert(order);
-        addFlow(order.getId(), null, "已提交", "SUBMIT", userId, "user", "用户提交报修工单");
+        addFlow(order.getId(), "待提交", "已提交/待审核", "SUBMIT", userId, "user", "用户提交报修工单");
 
         NetworkDevice device = new NetworkDevice();
         device.setId(order.getDeviceId());
@@ -101,7 +102,16 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
     @Override
     public void update(Long id, RepairOrder req) {
+        RepairOrder old = repairOrderMapper.selectById(id);
+        if (old == null) throw new BusinessException("工单不存在");
+        if (Arrays.asList("已完成", "已关闭", "已取消").contains(old.getStatus())) {
+            throw new BusinessException("终态工单不允许编辑核心字段");
+        }
         req.setId(id);
+        req.setReporterId(null);
+        req.setOrderNo(null);
+        req.setStatus(null);
+        req.setAssignMaintainerId(null);
         req.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(req);
     }
@@ -110,7 +120,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     public void delete(Long id) {
         RepairOrder order = repairOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("工单不存在");
-        if ("处理中".equals(order.getStatus()) || "待接单".equals(order.getStatus()) || "维修人员已接单".equals(order.getStatus())) throw new BusinessException("工单处理中，无法删除");
+        if (Arrays.asList("维修人员已接单", "维修中", "待采购/待配件", "申请延期中", "延期已批准", "待验收/待确认", "已完成", "已关闭").contains(order.getStatus())) throw new BusinessException("当前状态不允许删除");
         repairOrderMapper.deleteById(id);
     }
 
@@ -119,7 +129,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     public void assign(Long id, RepairOrderAssignDTO dto) {
         RepairOrder order = repairOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("工单不存在");
-        if (!"待分配".equals(order.getStatus())) throw new BusinessException("仅待分配工单允许分配");
+        if (!"待分配".equals(order.getStatus())) throw new BusinessException("未审核通过或未进入待分配，不能分配");
         SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
         if (maintainer == null || !"maintainer".equals(maintainer.getRole()) || maintainer.getStatus() == null || maintainer.getStatus() != 1) {
             throw new BusinessException("维修人员无效或不可用");
@@ -127,11 +137,12 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         String fromStatus = order.getStatus();
         order.setAssignMaintainerId(dto.getAssignMaintainerId());
         order.setAssignTime(LocalDateTime.now());
-        order.setStatus("待接单");
+        order.setStatus("已分配");
         order.setProgress(35);
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(order);
-        addFlow(order.getId(), fromStatus, "待接单", "ADMIN_ASSIGN", null, "admin", "管理员分配维修人员");
+        addFlow(order.getId(), fromStatus, "已分配", "ADMIN_ASSIGN", null, "admin", "管理员分配维修人员");
+        moveStatus(order, "待接单", 40, null, "admin", "等待维修人员接单", "SYSTEM_WAIT_ACCEPT");
     }
 
     @Override
@@ -142,7 +153,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         String action = dto.getAction();
         if ("ADMIN_APPROVE".equals(action)) {
             requireRole(role, "admin");
-            checkStatus(order.getStatus(), "已提交");
+            checkStatus(order.getStatus(), "已提交/待审核");
             moveStatus(order, "审核通过", 20, userId, role, dto.getRemark(), action);
             order.setAuditBy(userId);
             order.setAuditTime(LocalDateTime.now());
@@ -150,12 +161,12 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             moveStatus(order, "待分配", 30, userId, role, "审核通过进入待分配", "ADMIN_TO_ASSIGN");
         } else if ("ADMIN_REJECT".equals(action)) {
             requireRole(role, "admin");
-            checkStatus(order.getStatus(), "已提交");
+            checkStatus(order.getStatus(), "已提交/待审核");
             moveStatus(order, "审核驳回", 0, userId, role, dto.getRemark(), action);
         } else if ("USER_CANCEL".equals(action)) {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能撤销自己的工单");
-            if (!Arrays.asList("已提交", "审核驳回").contains(order.getStatus())) throw new BusinessException("当前状态不允许撤销");
+            if (!Arrays.asList("已提交/待审核", "审核驳回").contains(order.getStatus())) throw new BusinessException("当前状态不允许撤销");
             moveStatus(order, "已取消", 0, userId, role, dto.getRemark(), action);
         } else if ("MAINTAINER_ACCEPT".equals(action)) {
             requireRole(role, "maintainer");
@@ -163,39 +174,85 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             checkStatus(order.getStatus(), "待接单");
             order.setAcceptTime(LocalDateTime.now());
             moveStatus(order, "维修人员已接单", 45, userId, role, dto.getRemark(), action);
+        } else if ("MAINTAINER_REJECT".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), "待接单");
+            moveStatus(order, "待分配", 30, userId, role, dto.getRemark() == null ? "维修人员拒单，退回待分配" : dto.getRemark(), action);
         } else if ("MAINTAINER_START".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
             checkStatus(order.getStatus(), "维修人员已接单");
             order.setStartRepairTime(LocalDateTime.now());
             moveStatus(order, "维修中", 60, userId, role, dto.getRemark(), action);
+        } else if ("MAINTAINER_DELAY_APPLY".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            if (!Arrays.asList("维修中", "延期已批准").contains(order.getStatus())) throw new BusinessException("当前状态不允许申请延期");
+            order.setDelayReason(dto.getRemark());
+            moveStatus(order, "申请延期中", 65, userId, role, dto.getRemark() == null ? "申请延期" : dto.getRemark(), action);
+        } else if ("MAINTAINER_PARTS_APPLY".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), "维修中");
+            order.setPartsRequirement(dto.getPartsRequirement());
+            moveStatus(order, "待采购/待配件", 68, userId, role, dto.getRemark() == null ? "申请配件" : dto.getRemark(), action);
         } else if ("MAINTAINER_PROGRESS".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
             checkStatus(order.getStatus(), "维修中");
             if (dto.getProgress() == null) throw new BusinessException("请传入进度");
             order.setProgress(dto.getProgress());
+            if (dto.getScenePhotoUrls() != null) order.setScenePhotoUrls(dto.getScenePhotoUrls());
+            if (dto.getHandleDescription() != null) order.setHandleDescription(dto.getHandleDescription());
             order.setUpdateTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
             addFlow(order.getId(), "维修中", "维修中", action, userId, role, "进度更新至" + dto.getProgress() + "%");
         } else if ("MAINTAINER_FINISH".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), "维修中");
-            moveStatus(order, "待验收", 90, userId, role, dto.getRemark(), action);
+            if (!Arrays.asList("维修中", "延期已批准", "待采购/待配件").contains(order.getStatus())) throw new BusinessException("当前状态不允许完工");
+            moveStatus(order, "待验收/待确认", 90, userId, role, dto.getRemark(), action);
             order.setFinishTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
         } else if ("USER_CONFIRM_RESOLVED".equals(action)) {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
-            checkStatus(order.getStatus(), "待验收");
+            checkStatus(order.getStatus(), "待验收/待确认");
             order.setConfirmTime(LocalDateTime.now());
+            if (dto.getSatisfactionScore() != null) order.setSatisfactionScore(dto.getSatisfactionScore());
+            if (dto.getFeedback() != null) order.setFeedback(dto.getFeedback());
             moveStatus(order, "已完成", 100, userId, role, dto.getRemark(), action);
         } else if ("USER_CONFIRM_UNRESOLVED".equals(action)) {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
-            checkStatus(order.getStatus(), "待验收");
+            checkStatus(order.getStatus(), "待验收/待确认");
             moveStatus(order, "维修中", 60, userId, role, dto.getRemark(), action);
+        } else if ("ADMIN_REASSIGN".equals(action)) {
+            requireRole(role, "admin");
+            if (dto.getAssignMaintainerId() == null) throw new BusinessException("改派时必须指定新的维修人员");
+            SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
+            if (maintainer == null || !"maintainer".equals(maintainer.getRole()) || maintainer.getStatus() == null || maintainer.getStatus() != 1) {
+                throw new BusinessException("维修人员无效或不可用");
+            }
+            String oldStatus = order.getStatus();
+            order.setAssignMaintainerId(dto.getAssignMaintainerId());
+            order.setAssignTime(LocalDateTime.now());
+            order.setStatus("待接单");
+            order.setProgress(35);
+            order.setUpdateTime(LocalDateTime.now());
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), oldStatus, "待接单", action, userId, role, dto.getRemark() == null ? "管理员改派" : dto.getRemark());
+        } else if ("ADMIN_DELAY_APPROVE".equals(action)) {
+            requireRole(role, "admin");
+            checkStatus(order.getStatus(), "申请延期中");
+            moveStatus(order, "延期已批准", 70, userId, role, dto.getRemark() == null ? "管理员审批延期" : dto.getRemark(), action);
+        } else if ("ADMIN_CLOSE".equals(action)) {
+            requireRole(role, "admin");
+            if (Arrays.asList("已完成", "已关闭", "已取消").contains(order.getStatus())) throw new BusinessException("终态工单不允许重复关闭");
+            if (!"已完成".equals(order.getStatus()) && (dto.getRemark() == null || dto.getRemark().trim().isEmpty())) throw new BusinessException("用户未确认前强制关闭必须填写原因");
+            order.setCloseReason(dto.getRemark());
+            moveStatus(order, "已关闭", 100, userId, role, dto.getRemark(), action);
         } else {
             throw new BusinessException("不支持的操作");
         }
@@ -220,6 +277,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         validateStatusTransition(order.getStatus(), dto.getStatus());
         order.setStatus(dto.getStatus());
         if ("已完成".equals(dto.getStatus())) order.setFinishTime(LocalDateTime.now());
+        addFlow(order.getId(), order.getStatus(), dto.getStatus(), "MANUAL_STATUS", userId, role, dto.getRemark());
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(order);
 
@@ -239,8 +297,8 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         if ("maintainer".equals(role)) base.eq(RepairOrder::getAssignMaintainerId, userId);
         Map<String, Object> map = new HashMap<>();
         map.put("total", repairOrderMapper.selectCount(base));
-        map.put("pending", repairOrderMapper.selectCount(base.clone().in(RepairOrder::getStatus, Arrays.asList("已提交", "待分配", "待接单"))));
-        map.put("processing", repairOrderMapper.selectCount(base.clone().in(RepairOrder::getStatus, Arrays.asList("维修人员已接单", "处理中", "待验收"))));
+        map.put("pending", repairOrderMapper.selectCount(base.clone().in(RepairOrder::getStatus, Arrays.asList("已提交/待审核", "待分配", "已分配", "待接单"))));
+        map.put("processing", repairOrderMapper.selectCount(base.clone().in(RepairOrder::getStatus, Arrays.asList("维修人员已接单", "维修中", "待采购/待配件", "申请延期中", "延期已批准", "待验收/待确认"))));
         map.put("finished", repairOrderMapper.selectCount(base.clone().eq(RepairOrder::getStatus, "已完成")));
         return map;
     }
@@ -268,10 +326,10 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         for (SysUser m : maintainers) {
             Long unfinished = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
                     .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .in(RepairOrder::getStatus, Arrays.asList("待接单", "维修人员已接单", "处理中", "待验收")));
+                    .in(RepairOrder::getStatus, Arrays.asList("待接单", "维修人员已接单", "维修中", "待采购/待配件", "申请延期中", "延期已批准", "待验收/待确认")));
             Long processing = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
                     .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .eq(RepairOrder::getStatus, "处理中"));
+                    .eq(RepairOrder::getStatus, "维修中"));
             unfinishedCountMap.put(m.getId(), unfinished == null ? 0L : unfinished);
             processingCountMap.put(m.getId(), processing == null ? 0L : processing);
             maintainerNameMap.put(m.getId(), m.getRealName());
@@ -304,27 +362,33 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     }
 
     private String generateOrderNo() {
-        String prefix = "RO" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        String orderNo = prefix + ThreadLocalRandom.current().nextInt(100, 999);
-        Long count = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>().eq(RepairOrder::getOrderNo, orderNo));
-        if (count != null && count > 0) {
-            return prefix + ThreadLocalRandom.current().nextInt(1000, 9999);
+        String datePrefix = "RO" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        for (int i = 0; i < 8; i++) {
+            String candidate = datePrefix + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"))
+                    + ThreadLocalRandom.current().nextInt(100000, 999999);
+            Long count = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>().eq(RepairOrder::getOrderNo, candidate));
+            if (count == null || count == 0) return candidate;
         }
-        return orderNo;
+        throw new BusinessException("工单号生成失败，请重试");
     }
 
     private void validateStatusTransition(String from, String to) {
         if (Objects.equals(from, to)) return;
         Map<String, Set<String>> transitionMap = new HashMap<>();
-        transitionMap.put("已提交", new HashSet<>(Arrays.asList("审核通过", "审核驳回", "已取消")));
+        transitionMap.put("待提交", new HashSet<>(Collections.singletonList("已提交/待审核")));
+        transitionMap.put("已提交/待审核", new HashSet<>(Arrays.asList("审核通过", "审核驳回", "已取消")));
         transitionMap.put("审核通过", new HashSet<>(Collections.singletonList("待分配")));
-        transitionMap.put("待分配", new HashSet<>(Collections.singletonList("待接单")));
-        transitionMap.put("待接单", new HashSet<>(Collections.singletonList("维修人员已接单")));
-        transitionMap.put("维修人员已接单", new HashSet<>(Collections.singletonList("维修中")));
-        transitionMap.put("维修中", new HashSet<>(Arrays.asList("待验收", "已关闭")));
-        transitionMap.put("待验收", new HashSet<>(Arrays.asList("已完成", "维修中")));
-        transitionMap.put("已完成", Collections.emptySet());
         transitionMap.put("审核驳回", new HashSet<>(Collections.singletonList("已取消")));
+        transitionMap.put("待分配", new HashSet<>(Collections.singletonList("已分配")));
+        transitionMap.put("已分配", new HashSet<>(Collections.singletonList("待接单")));
+        transitionMap.put("待接单", new HashSet<>(Arrays.asList("维修人员已接单", "待分配")));
+        transitionMap.put("维修人员已接单", new HashSet<>(Collections.singletonList("维修中")));
+        transitionMap.put("维修中", new HashSet<>(Arrays.asList("待采购/待配件", "申请延期中", "待验收/待确认", "已关闭")));
+        transitionMap.put("待采购/待配件", new HashSet<>(Arrays.asList("维修中", "待验收/待确认")));
+        transitionMap.put("申请延期中", new HashSet<>(Arrays.asList("延期已批准", "维修中")));
+        transitionMap.put("延期已批准", new HashSet<>(Arrays.asList("维修中", "待验收/待确认")));
+        transitionMap.put("待验收/待确认", new HashSet<>(Arrays.asList("已完成", "维修中", "已关闭")));
+        transitionMap.put("已完成", new HashSet<>(Collections.singletonList("已关闭")));
         transitionMap.put("已关闭", Collections.emptySet());
         transitionMap.put("已取消", Collections.emptySet());
         Set<String> nextSet = transitionMap.getOrDefault(from, Collections.emptySet());
