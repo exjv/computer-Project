@@ -3,12 +3,21 @@ import { loginApi, userInfoApi } from '../api'
 import { PERMISSIONS } from '../constants/rbac'
 
 export const useUserStore = defineStore('user', {
-  state: () => ({ token: localStorage.getItem('token') || '', userInfo: JSON.parse(localStorage.getItem('userInfo') || '{}') }),
+  state: () => ({
+    token: localStorage.getItem('token') || '',
+    userInfo: JSON.parse(localStorage.getItem('userInfo') || '{}'),
+    permissions: JSON.parse(localStorage.getItem('permissions') || '[]'),
+    roles: JSON.parse(localStorage.getItem('roles') || '[]')
+  }),
   actions: {
     async login(form) {
       const res = await loginApi(form)
       this.token = res.token
       localStorage.setItem('token', res.token)
+      this.permissions = res.permissions || []
+      this.roles = res.roles || []
+      localStorage.setItem('permissions', JSON.stringify(this.permissions))
+      localStorage.setItem('roles', JSON.stringify(this.roles))
       await this.fetchUserInfo()
     },
     async fetchUserInfo() {
@@ -19,7 +28,11 @@ export const useUserStore = defineStore('user', {
         data.permissions = PERMISSIONS[(role || '').toUpperCase()] || []
       }
       this.userInfo = data
+      this.permissions = data.permissions || []
+      this.roles = data.roles || []
       localStorage.setItem('userInfo', JSON.stringify(data))
+      localStorage.setItem('permissions', JSON.stringify(this.permissions))
+      localStorage.setItem('roles', JSON.stringify(this.roles))
     },
     hasRole(role) {
       const roles = this.userInfo.roles || []

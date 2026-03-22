@@ -14,7 +14,10 @@ public class RepairOrderFlow {
     private String toStatus;
     private String action;
     private Long operatorId;
+    private String operatorEmployeeNo;
+    private String operatorName;
     private String operatorRole;
+    private String operationType;
     private String remark;
     private LocalDateTime createTime;
 }

@@ -6,7 +6,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("notice")
+@TableName("announcement")
 public class Notice {
     private Long id;
     private String title;
@@ -15,6 +15,8 @@ public class Notice {
     private String status;
     private LocalDateTime publishTime;
     private Long publisherId;
+    private String status;
+    private Integer sortNo;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

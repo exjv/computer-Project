@@ -6,6 +6,12 @@
       <el-form-item label="故障标题"><el-input v-model="query.title" /></el-form-item>
       <el-form-item label="优先级"><el-select v-model="query.priority" clearable><el-option label="低" value="低"/><el-option label="中" value="中"/><el-option label="高" value="高"/></el-select></el-form-item>
       <el-form-item label="工单状态"><el-select v-model="query.status" clearable><el-option v-for="s in allStatus" :key="s" :label="s" :value="s"/></el-select></el-form-item>
+      <el-form-item label="排序字段">
+        <el-select v-model="query.sortField" style="width:120px"><el-option label="创建时间" value="id"/><el-option label="报修时间" value="reportTime"/><el-option label="优先级" value="priority"/><el-option label="状态" value="status"/></el-select>
+      </el-form-item>
+      <el-form-item label="排序方式">
+        <el-select v-model="query.sortOrder" style="width:100px"><el-option label="降序" value="desc"/><el-option label="升序" value="asc"/></el-select>
+      </el-form-item>
       <el-button type="primary" @click="load">查询</el-button><el-button @click="reset">重置</el-button>
     </el-form>
 
@@ -13,15 +19,66 @@
       <el-button type="primary" v-if="can('repair:create')" @click="openAdd">提交报修</el-button>
       <el-button type="success" v-if="can('repair:assign')" @click="autoDispatch">自动分配工单</el-button>
     </div>
+    <el-card v-if="stats.predictionComparableCount!==undefined" style="margin-bottom:10px">
+      预测样本：{{ stats.predictionComparableCount }}，
+      平均绝对误差：{{ Number(stats.predictionAvgAbsErrorHours || 0).toFixed(2) }}小时，
+      4小时内命中：{{ stats.predictionWithin4hCount || 0 }}，
+      24小时内命中：{{ stats.predictionWithin24hCount || 0 }}
+    </el-card>
+    <el-card v-if="isAdmin" style="margin-bottom:10px">
+      反馈总数：{{ stats.feedbackTotalCount || 0 }}，
+      平均满意度：{{ Number(stats.satisfactionAvgScore || 0).toFixed(2) }}分，
+      差评工单（<=2分）：{{ stats.lowSatisfactionCount || 0 }}，
+      未解决返修：{{ stats.unresolvedFeedbackCount || 0 }}
+      <div style="margin-top:8px">
+        <el-button size="small" type="warning" @click="openLowDialog">查看差评工单</el-button>
+        <el-button size="small" type="danger" @click="openUnresolvedDialog">查看未解决返修</el-button>
+      </div>
+    </el-card>
+    <el-card v-if="isAdmin" style="margin-bottom:10px">
+      <el-form :inline="true" :model="analyticsQuery">
+        <el-form-item label="统计维度">
+          <el-select v-model="analyticsQuery.rangeType" style="width:160px">
+            <el-option label="日" value="day"/>
+            <el-option label="月" value="month"/>
+            <el-option label="半年" value="halfyear"/>
+            <el-option label="年" value="year"/>
+            <el-option label="自定义" value="custom"/>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="自定义区间" v-if="analyticsQuery.rangeType==='custom'">
+          <el-date-picker v-model="analyticsQuery.customRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" range-separator="~" start-placeholder="开始" end-placeholder="结束"/>
+        </el-form-item>
+        <el-button type="primary" @click="loadAnalytics">刷新分析</el-button>
+        <el-button type="success" @click="exportStatistics">导出统计Excel</el-button>
+        <el-form-item label="导出设备">
+          <el-select v-model="analyticsQuery.exportDeviceId" clearable style="width:220px">
+            <el-option v-for="d in devices" :key="d.id" :label="`${d.deviceCode || ''}-${d.deviceName || ''}`" :value="d.id"/>
+          </el-select>
+        </el-form-item>
+        <el-button type="warning" @click="exportRecords">按设备导出维修记录</el-button>
+      </el-form>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div ref="trendChartRef" style="width:48%;height:300px;min-width:420px"></div>
+        <div ref="faultChartRef" style="width:48%;height:300px;min-width:420px"></div>
+        <div ref="maintainerChartRef" style="width:48%;height:300px;min-width:420px"></div>
+        <div ref="satisfactionChartRef" style="width:48%;height:300px;min-width:420px"></div>
+      </div>
+      <div style="margin-top:8px">
+        <el-tag type="info" style="margin-right:8px">延期占比 {{ Number(analyticsData.delayOrderRatio || 0).toFixed(2) }}%</el-tag>
+        <el-tag type="info" style="margin-right:8px">配件采购占比 {{ Number(analyticsData.partsPurchaseRatio || 0).toFixed(2) }}%</el-tag>
+        <el-tag type="success" style="margin-right:8px;cursor:pointer" @click="applyDrilldown({applyDelay:1,status:'维修中'})">延期工单数联动</el-tag>
+        <el-tag type="warning" style="cursor:pointer" @click="applyDrilldown({needPurchaseParts:1})">配件采购工单联动</el-tag>
+      </div>
+    </el-card>
 
     <el-table :data="list" style="margin-top:12px">
-      <el-table-column prop="orderNo" label="工单编号" />
+      <el-table-column prop="orderNo" label="工单编号" width="180" />
       <el-table-column prop="title" label="故障标题" />
-      <el-table-column prop="priority" label="优先级" />
-      <el-table-column prop="status" label="工单状态" />
-      <el-table-column prop="assignMaintainerId" label="维修人员ID" />
-      <el-table-column prop="reportTime" label="报修时间" />
-      <el-table-column label="操作" width="360">
+      <el-table-column prop="priority" label="优先级" width="100" />
+      <el-table-column prop="status" label="工单状态" width="160" />
+      <el-table-column prop="reportTime" label="报修时间" width="180" />
+      <el-table-column label="操作" width="320">
         <template #default="s">
           <el-button link @click="detail(s.row)">详情</el-button>
               <el-button link @click="track(s.row)">跟踪</el-button>
@@ -52,8 +109,14 @@
       <el-form :model="form" label-width="100px">
         <el-form-item label="设备"><el-select v-model="form.deviceId"><el-option v-for="d in devices" :key="d.id" :label="d.deviceName" :value="d.id"/></el-select></el-form-item>
         <el-form-item label="故障标题"><el-input v-model="form.title"/></el-form-item>
+        <el-form-item label="故障类型"><el-input v-model="form.faultType"/></el-form-item>
+        <el-form-item label="联系方式"><el-input v-model="form.contactPhone"/></el-form-item>
+        <el-form-item label="报修地点"><el-input v-model="form.reportLocation"/></el-form-item>
         <el-form-item label="故障描述"><el-input type="textarea" v-model="form.description"/></el-form-item>
         <el-form-item label="优先级"><el-select v-model="form.priority"><el-option label="低" value="低"/><el-option label="中" value="中"/><el-option label="高" value="高"/></el-select></el-form-item>
+        <el-form-item label="影响范围"><el-switch v-model="form.affectWideAreaNetwork" :active-value="1" :inactive-value="0" active-text="影响大范围网络"/></el-form-item>
+        <el-form-item label="原预计完成"><el-date-picker v-model="form.originalExpectedFinishTime" value-format="YYYY-MM-DD HH:mm:ss" type="datetime"/></el-form-item>
+        <el-form-item label="备注"><el-input type="textarea" v-model="form.remark"/></el-form-item>
       </el-form>
       <template #footer><el-button @click="addDialog=false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>
@@ -80,21 +143,24 @@
       <template #footer><el-button @click="assignDialog=false">取消</el-button><el-button type="primary" @click="saveAssign">保存</el-button></template>
     </el-dialog>
     <el-dialog v-model="statusDialog" title="修改工单状态"><el-form :model="statusForm"><el-form-item label="状态"><el-select v-model="statusForm.status"><el-option v-for="s in allStatus" :key="s" :label="s" :value="s"/></el-select></el-form-item></el-form><template #footer><el-button @click="statusDialog=false">取消</el-button><el-button type="primary" @click="saveStatus">保存</el-button></template></el-dialog>
-    <el-dialog v-model="detailDialog" title="工单详情" width="860px">
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="工单号">{{ current.orderNo }}</el-descriptions-item>
-        <el-descriptions-item label="当前状态">{{ current.status }}</el-descriptions-item>
-        <el-descriptions-item label="故障标题">{{ current.title }}</el-descriptions-item>
-        <el-descriptions-item label="优先级">{{ current.priority }}</el-descriptions-item>
-        <el-descriptions-item label="维修进度">{{ current.progress || 0 }}%</el-descriptions-item>
-        <el-descriptions-item label="维修人员">{{ current.assignMaintainerId || '-' }}</el-descriptions-item>
-      </el-descriptions>
-      <el-divider>流程时间轴</el-divider>
-      <el-timeline>
-        <el-timeline-item v-for="f in flowList" :key="f.id" :timestamp="f.createTime">
-          {{ f.fromStatus || '开始' }} → {{ f.toStatus }} | {{ f.action }} | {{ f.remark || '无备注' }}
-        </el-timeline-item>
-      </el-timeline>
+    <el-dialog v-model="lowDialog" title="差评工单列表" width="900px">
+      <el-table :data="lowList">
+        <el-table-column prop="orderNo" label="工单编号" width="180"/>
+        <el-table-column prop="title" label="标题" min-width="140"/>
+        <el-table-column prop="satisfactionScore" label="满意度" width="90"/>
+        <el-table-column prop="feedbackContent" label="反馈意见" min-width="220"/>
+        <el-table-column prop="confirmTime" label="确认时间" width="180"/>
+      </el-table>
+    </el-dialog>
+    <el-dialog v-model="unresolvedDialog" title="未解决返修工单列表" width="900px">
+      <el-table :data="unresolvedList">
+        <el-table-column prop="orderNo" label="工单编号" width="180"/>
+        <el-table-column prop="title" label="标题" min-width="140"/>
+        <el-table-column prop="orderStatus" label="当前状态" width="130"/>
+        <el-table-column prop="assignMaintainerName" label="维修人员" width="110"/>
+        <el-table-column prop="feedbackContent" label="反馈意见" min-width="220"/>
+        <el-table-column prop="confirmTime" label="确认时间" width="180"/>
+      </el-table>
     </el-dialog>
   </div>
 </template>
@@ -159,6 +225,75 @@ const quickAction = async (row, action) => {
   await putApi(`/repair-orders/${row.id}/action`, payload)
   ElMessage.success('操作成功')
   await load()
+}
+const loadAnalytics = async () => {
+  const params = { rangeType: analyticsQuery.rangeType }
+  if (analyticsQuery.rangeType === 'custom' && analyticsQuery.customRange?.length === 2) {
+    params.start = analyticsQuery.customRange[0]
+    params.end = analyticsQuery.customRange[1]
+  }
+  const data = await getPage('/repair-orders/analytics', params)
+  Object.assign(analyticsData, data || {})
+  await nextTick()
+  renderCharts()
+}
+const initChart = (inst, el) => (inst || echarts.init(el))
+const renderCharts = () => {
+  if (!isAdmin.value || !trendChartRef.value) return
+  trendChart = initChart(trendChart, trendChartRef.value)
+  faultChart = initChart(faultChart, faultChartRef.value)
+  maintainerChart = initChart(maintainerChart, maintainerChartRef.value)
+  satisfactionChart = initChart(satisfactionChart, satisfactionChartRef.value)
+  const trend = analyticsData.timeTrend || []
+  trendChart.setOption({ title:{text:'报修/完工趋势'}, tooltip:{trigger:'axis'}, xAxis:{type:'category',data:trend.map(v=>v.bucket)}, yAxis:{type:'value'}, series:[{name:'报修数量',type:'bar',data:trend.map(v=>v.reportCount||0)},{name:'已完成数量',type:'line',data:trend.map(v=>v.finishedCount||0)}] })
+  const faultRank = analyticsData.faultReasonDistribution || []
+  faultChart.setOption({ title:{text:'故障原因分布（点击联动）'}, tooltip:{trigger:'item'}, xAxis:{type:'category',data:faultRank.map(v=>v.name)}, yAxis:{type:'value'}, series:[{type:'bar',data:faultRank.map(v=>v.value||0)}] })
+  faultChart.off('click'); faultChart.on('click', p => applyDrilldown({ faultType: faultRank[p.dataIndex]?.name || '' }))
+  const maintainer = analyticsData.maintainerOrderCount || []
+  maintainerChart.setOption({ title:{text:'维修人员工单数（点击联动）'}, tooltip:{trigger:'item'}, xAxis:{type:'category',data:maintainer.map(v=>v.name)}, yAxis:{type:'value'}, series:[{type:'bar',data:maintainer.map(v=>v.value||0)}] })
+  maintainerChart.off('click'); maintainerChart.on('click', p => {
+    const name = maintainer[p.dataIndex]?.name
+    const m = (maintainers.value || []).find(v => v.realName === name)
+    applyDrilldown({ assignMaintainerId: m ? m.id : '' })
+  })
+  const satisfaction = analyticsData.satisfactionStats?.distribution || []
+  satisfactionChart.setOption({ title:{text:'用户满意度统计'}, tooltip:{trigger:'item'}, series:[{type:'pie',radius:'60%',data:satisfaction.map(v=>({name:v.name,value:v.value}))}] })
+}
+const downloadBlob = (blob, fileName) => {
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+const exportStatistics = async () => {
+  const token = localStorage.getItem('token')
+  const params = { rangeType: analyticsQuery.rangeType }
+  if (analyticsQuery.rangeType === 'custom' && analyticsQuery.customRange?.length === 2) {
+    params.start = analyticsQuery.customRange[0]
+    params.end = analyticsQuery.customRange[1]
+  }
+  const res = await axios.get('/api/repair-orders/exports/statistics-excel', {
+    params,
+    responseType: 'blob',
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  })
+  downloadBlob(res.data, 'order_statistics_report.xlsx')
+}
+const exportRecords = async () => {
+  const token = localStorage.getItem('token')
+  const params = {}
+  if (analyticsQuery.exportDeviceId) params.deviceId = analyticsQuery.exportDeviceId
+  if (analyticsData.rangeStart && analyticsData.rangeEnd) {
+    params.start = String(analyticsData.rangeStart).replace('T', ' ').slice(0,19)
+    params.end = String(analyticsData.rangeEnd).replace('T', ' ').slice(0,19)
+  }
+  const res = await axios.get('/api/repair-orders/exports/records-excel', {
+    params,
+    responseType: 'blob',
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  })
+  downloadBlob(res.data, 'repair_records_report.xlsx')
 }
 const canAction = (row, action) => {
   if (action === 'ADMIN_APPROVE') return can('repair:audit') && row.status === '已提交/待审核'

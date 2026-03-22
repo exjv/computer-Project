@@ -2,9 +2,16 @@ package com.jou.networkrepair.module.user.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
+import com.jou.networkrepair.module.system.entity.SysRole;
+import com.jou.networkrepair.module.system.entity.ThirdPartyBind;
+import com.jou.networkrepair.module.system.entity.UserRole;
+import com.jou.networkrepair.module.system.mapper.SysRoleMapper;
+import com.jou.networkrepair.module.system.mapper.ThirdPartyBindMapper;
+import com.jou.networkrepair.module.system.mapper.UserRoleMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
@@ -18,6 +25,14 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,7 +47,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("@permissionService.hasPermission('" + PermissionCode.USER_MANAGE + "')")
 public class UserController {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1\\\\d{10}$");
 
@@ -201,6 +216,105 @@ public class UserController {
         return ApiResult.success("角色分配成功", null);
     }
 
+    @PutMapping("/{id}/assign-role")
+    @Loggable(module = "用户管理", operationType = "分配角色", operationDesc = "分配用户角色")
+    public ApiResult<Void> assignRole(@PathVariable Long id, @RequestParam String role) {
+        checkRoleValid(role);
+        SysUser user = new SysUser();
+        user.setId(id);
+        user.setRole(role);
+        user.setUpdateTime(LocalDateTime.now());
+        userMapper.updateById(user);
+        bindUserRole(id, role);
+        return ApiResult.success("角色分配成功", null);
+    }
+
+    @PostMapping("/batch")
+    @Loggable(module = "用户管理", operationType = "批量新增", operationDesc = "批量新增用户")
+    public ApiResult<Map<String, Object>> batchCreate(@RequestBody List<SysUser> users) {
+        if (users == null || users.isEmpty()) throw new BusinessException("批量数据不能为空");
+        List<String> errors = new ArrayList<>();
+        int success = 0;
+        for (int i = 0; i < users.size(); i++) {
+            SysUser user = users.get(i);
+            try {
+                validateUserFields(user, null);
+                checkEmployeeNoUnique(user.getEmployeeNo(), null);
+                checkRoleValid(user.getRole());
+                user.setPassword(passwordEncoder.encode(user.getPassword() == null || user.getPassword().trim().isEmpty() ? "123456" : user.getPassword()));
+                user.setCreateTime(LocalDateTime.now());
+                user.setUpdateTime(LocalDateTime.now());
+                userMapper.insert(user);
+                bindUserRole(user.getId(), user.getRole());
+                success++;
+            } catch (Exception e) {
+                errors.add("第" + (i + 1) + "行失败：" + e.getMessage());
+            }
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("total", users.size());
+        result.put("successCount", success);
+        result.put("failCount", users.size() - success);
+        result.put("errors", errors);
+        return ApiResult.success(result);
+    }
+
+    @PostMapping("/import-excel")
+    @Loggable(module = "用户管理", operationType = "导入", operationDesc = "批量导入用户")
+    public ApiResult<Map<String, Object>> importExcel(@RequestParam("file") MultipartFile file) throws Exception {
+        if (file == null || file.isEmpty()) throw new BusinessException("请上传Excel文件");
+        List<String> errors = new ArrayList<>();
+        int success = 0;
+        Set<String> seenEmployeeNo = new HashSet<>();
+        try (InputStream is = file.getInputStream(); Workbook wb = new XSSFWorkbook(is)) {
+            Sheet sheet = wb.getSheetAt(0);
+            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) continue;
+                String employeeNo = cell(row, 0);
+                String username = cell(row, 1);
+                String realName = cell(row, 2);
+                String role = cell(row, 3);
+                String phone = cell(row, 4);
+                String email = cell(row, 5);
+                String department = cell(row, 6);
+                String statusStr = cell(row, 7);
+                try {
+                    if (employeeNo.isEmpty() || username.isEmpty() || realName.isEmpty() || role.isEmpty()) {
+                        throw new BusinessException("工号/用户名/姓名/角色为必填项");
+                    }
+                    if (seenEmployeeNo.contains(employeeNo)) throw new BusinessException("导入文件内工号重复：" + employeeNo);
+                    seenEmployeeNo.add(employeeNo);
+                    checkEmployeeNoUnique(employeeNo, null);
+                    if (!phone.isEmpty() && !PHONE_PATTERN.matcher(phone).matches()) throw new BusinessException("手机号格式错误");
+                    checkRoleValid(role);
+                    SysUser user = new SysUser();
+                    user.setEmployeeNo(employeeNo);
+                    user.setUsername(username);
+                    user.setRealName(realName);
+                    user.setRole(role);
+                    user.setPhone(phone);
+                    user.setEmail(email.isEmpty() ? null : email);
+                    user.setDepartment(department);
+                    user.setStatus(statusStr.isEmpty() ? 1 : Integer.valueOf(statusStr));
+                    user.setPassword(passwordEncoder.encode("123456"));
+                    user.setCreateTime(LocalDateTime.now());
+                    user.setUpdateTime(LocalDateTime.now());
+                    userMapper.insert(user);
+                    bindUserRole(user.getId(), role);
+                    success++;
+                } catch (Exception e) {
+                    errors.add("第" + (r + 1) + "行失败：" + e.getMessage());
+                }
+            }
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("successCount", success);
+        result.put("failCount", errors.size());
+        result.put("errors", errors);
+        return ApiResult.success(result);
+    }
+
     @GetMapping("/list-by-role")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
     public ApiResult<List<SysUser>> listByRole(@RequestParam String role) {
@@ -313,11 +427,56 @@ public class UserController {
         if (value == null || value.trim().isEmpty()) throw new BusinessException(msg);
     }
 
+    @GetMapping("/employee-no/check")
+    public ApiResult<Map<String, Object>> employeeNoCheck(@RequestParam String employeeNo,
+                                                           @RequestParam(required = false) Long excludeUserId) {
+        SysUser exists = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmployeeNo, employeeNo));
+        boolean available = exists == null || (excludeUserId != null && excludeUserId.equals(exists.getId()));
+        Map<String, Object> result = new HashMap<>();
+        result.put("employeeNo", employeeNo);
+        result.put("available", available);
+        return ApiResult.success(result);
+    }
+
     private void checkEmployeeNoUnique(String employeeNo, Long id) {
         if (employeeNo == null || employeeNo.trim().isEmpty()) throw new BusinessException("工号不能为空");
         SysUser exists = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmployeeNo, employeeNo));
         if (exists != null && (id == null || !id.equals(exists.getId()))) {
             throw new BusinessException("工号已存在");
         }
+    }
+
+    private void checkRoleValid(String roleCode) {
+        if (roleCode == null || roleCode.trim().isEmpty()) throw new BusinessException("角色不能为空");
+        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, roleCode));
+        if (role == null) throw new BusinessException("角色不合法：" + roleCode);
+    }
+
+    private void validateUserFields(SysUser user, Long id) {
+        if (user == null) throw new BusinessException("用户数据不能为空");
+        if (user.getEmployeeNo() == null || user.getEmployeeNo().trim().isEmpty()) throw new BusinessException("工号不能为空");
+        if (user.getRealName() == null || user.getRealName().trim().isEmpty()) throw new BusinessException("姓名不能为空");
+        if (user.getRole() == null || user.getRole().trim().isEmpty()) throw new BusinessException("角色不能为空");
+        if (user.getPhone() != null && !user.getPhone().trim().isEmpty() && !PHONE_PATTERN.matcher(user.getPhone()).matches()) {
+            throw new BusinessException("手机号格式不正确");
+        }
+    }
+
+    private String cell(Row row, int idx) {
+        if (row.getCell(idx) == null) return "";
+        row.getCell(idx).setCellType(org.apache.poi.ss.usermodel.CellType.STRING);
+        return row.getCell(idx).getStringCellValue() == null ? "" : row.getCell(idx).getStringCellValue().trim();
+    }
+
+    private void bindUserRole(Long userId, String roleCode) {
+        if (userId == null || roleCode == null || roleCode.trim().isEmpty()) return;
+        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, roleCode));
+        if (role == null) return;
+        userRoleMapper.delete(new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
+        UserRole ur = new UserRole();
+        ur.setUserId(userId);
+        ur.setRoleId(role.getId());
+        ur.setCreateTime(LocalDateTime.now());
+        userRoleMapper.insert(ur);
     }
 }

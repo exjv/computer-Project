@@ -87,17 +87,26 @@
       </el-form>
 
       <template v-if="mode==='view'">
-        <el-divider>最近工单</el-divider>
+        <el-divider>关联工单（最近10条）</el-divider>
         <el-timeline>
           <el-timeline-item v-for="o in profile.recentOrders || []" :key="o.id" :timestamp="o.reportTime">
             {{ o.orderNo }} | {{ o.status }} | {{ o.title }}
           </el-timeline-item>
         </el-timeline>
       </template>
+
       <template #footer><el-button @click="dialog=false">关闭</el-button><el-button v-if="mode!=='view'" type="primary" @click="save">保存</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="statusDialog" title="设备状态维护" width="420px">
+      <el-form :model="statusForm" label-width="90px">
+        <el-form-item label="设备状态"><el-select v-model="statusForm.status"><el-option v-for="s in statusOptions" :key="s" :label="s" :value="s"/></el-select></el-form-item>
+      </el-form>
+      <template #footer><el-button @click="statusDialog=false">取消</el-button><el-button type="primary" @click="saveStatus">提交</el-button></template>
     </el-dialog>
   </div>
 </template>
+
 <script setup>
 import { reactive, ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
