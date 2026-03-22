@@ -3,6 +3,9 @@ package com.jou.networkrepair.module.repair.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jou.networkrepair.module.log.entity.OperationLog;
+import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderActionDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
@@ -26,6 +29,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RepairOrderController {
     private final RepairOrderService repairOrderService;
+    private final OperationLogMapper operationLogMapper;
 
     @GetMapping("/page")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
@@ -38,6 +42,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/my")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Page<RepairOrder>> my(@RequestParam Long current, @RequestParam Long size,
                                            @RequestParam(required = false) String status,
                                            @RequestParam(required = false) String orderNo,
@@ -49,6 +54,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<RepairOrder> get(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
@@ -86,14 +92,29 @@ public class RepairOrderController {
     }
 
     @PutMapping("/{id}/action")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    @Loggable(module = "工单流程", operationType = "流转", operationDesc = "执行工单流转动作")
     public ApiResult<Void> action(@PathVariable Long id, @RequestBody @Validated RepairOrderActionDTO dto, HttpServletRequest request) {
         repairOrderService.action(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("操作成功", null);
     }
 
     @GetMapping("/{id}/flows")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<List<RepairOrderFlow>> flows(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+
+    @GetMapping("/{id}/records")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    public ApiResult<Map<String, Object>> records(@PathVariable Long id, HttpServletRequest request) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("flows", repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+        map.put("logs", operationLogMapper.selectList(new LambdaQueryWrapper<OperationLog>()
+                .like(OperationLog::getRequestUrl, "/repair-orders/" + id)
+                .orderByDesc(OperationLog::getOperationTime)));
+        return ApiResult.success(map);
     }
 
     @PutMapping("/{id}/status")
@@ -105,6 +126,7 @@ public class RepairOrderController {
     }
 
     @GetMapping("/statistics")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Map<String, Object>> stats(HttpServletRequest request) {
         return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
