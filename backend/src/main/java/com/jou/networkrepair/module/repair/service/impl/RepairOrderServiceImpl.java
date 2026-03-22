@@ -17,8 +17,10 @@ import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
+import com.jou.networkrepair.module.repair.entity.RepairRecord;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderFlowMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
+import com.jou.networkrepair.module.repair.mapper.RepairRecordMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
@@ -50,6 +52,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     private final UserMapper userMapper;
     private final RepairDispatchAlgorithm repairDispatchAlgorithm;
     private final RepairOrderFlowMapper repairOrderFlowMapper;
+    private final RepairRecordMapper repairRecordMapper;
     private final BusinessLogMapper businessLogMapper;
     private final RepairFeedbackMapper repairFeedbackMapper;
 
@@ -263,6 +266,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             moveStatus(order, RepairOrderStatusEnum.PENDING_CONFIRM.getLabel(), 90, userId, role, dto.getRemark(), action);
             order.setFinishTime(LocalDateTime.now());
             repairOrderMapper.updateById(order);
+            sinkRepairRecord(order, userId, dto);
             recordPredictionError(order, userId);
         } else if ("USER_CONFIRM_RESOLVED".equals(action)) {
             requireRole(role, "user");
@@ -674,6 +678,52 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         map.put("predictionAvgAbsErrorHours", totalAbsHours / orders.size());
         map.put("predictionWithin4hCount", within4);
         map.put("predictionWithin24hCount", within24);
+    }
+
+    private void sinkRepairRecord(RepairOrder order, Long maintainerId, RepairOrderActionDTO dto) {
+        Long exists = repairRecordMapper.selectCount(new LambdaQueryWrapper<RepairRecord>()
+                .eq(RepairRecord::getRepairOrderId, order.getId()));
+        if (exists != null && exists > 0L) return;
+        SysUser maintainer = maintainerId == null ? null : userMapper.selectById(maintainerId);
+        RepairRecord record = new RepairRecord();
+        record.setRepairOrderId(order.getId());
+        record.setRepairOrderNo(order.getOrderNo());
+        record.setDeviceId(order.getDeviceId());
+        record.setDeviceCode(order.getDeviceCode());
+        record.setRepairSequence(calcRecordSequence(order.getDeviceId(), false));
+        record.setMaintenanceSequence(calcRecordSequence(order.getDeviceId(), true));
+        record.setReportTime(order.getReportTime());
+        record.setAcceptTime(order.getAcceptTime());
+        record.setStartRepairTime(order.getStartRepairTime());
+        record.setFinishTime(order.getFinishTime());
+        record.setMaintainerId(maintainerId);
+        record.setMaintainerEmployeeNo(maintainer == null ? null : maintainer.getEmployeeNo());
+        record.setMaintainerName(maintainer == null ? null : maintainer.getRealName());
+        record.setFaultReason(order.getFaultType());
+        record.setProcessDetail(dto.getRemark());
+        record.setFixMeasure(order.getFixMeasure());
+        record.setResultDetail("提交完工，待用户验收");
+        record.setIsResolved(1);
+        record.setUsedParts(order.getNeedPurchaseParts());
+        record.setUsedPartsDesc(order.getPartsDescription());
+        record.setDelayApplied(order.getApplyDelay());
+        record.setDelayReason(order.getApplyDelay() != null && order.getApplyDelay() == 1 ? "存在延期申请" : null);
+        if (order.getStartRepairTime() != null && order.getFinishTime() != null && !order.getFinishTime().isBefore(order.getStartRepairTime())) {
+            record.setLaborHours((int) Duration.between(order.getStartRepairTime(), order.getFinishTime()).toHours());
+        }
+        record.setRepairConclusion("待验收");
+        record.setRepairTime(LocalDateTime.now());
+        record.setRemark(order.getRemark());
+        record.setCreateTime(LocalDateTime.now());
+        record.setUpdateTime(LocalDateTime.now());
+        repairRecordMapper.insert(record);
+    }
+
+    private Integer calcRecordSequence(Long deviceId, boolean resolvedOnly) {
+        LambdaQueryWrapper<RepairRecord> qw = new LambdaQueryWrapper<RepairRecord>().eq(RepairRecord::getDeviceId, deviceId);
+        if (resolvedOnly) qw.eq(RepairRecord::getIsResolved, 1);
+        Long count = repairRecordMapper.selectCount(qw);
+        return (count == null ? 0 : count.intValue()) + 1;
     }
 
     private String generateOrderNo() {

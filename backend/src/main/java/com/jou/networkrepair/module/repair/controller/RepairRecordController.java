@@ -13,6 +13,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/repair-records")
@@ -60,5 +61,11 @@ public class RepairRecordController {
     public ApiResult<Void> delete(@PathVariable Long id) {
         repairRecordService.delete(id);
         return ApiResult.success("删除成功", null);
+    }
+
+    @GetMapping("/device-statistics")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_RECORD_WRITE + "') || @permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
+    public ApiResult<Map<String, Object>> deviceStatistics() {
+        return ApiResult.success(repairRecordService.deviceStatistics());
     }
 }

@@ -19,7 +19,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -78,17 +81,30 @@ public class RepairRecordServiceImpl implements RepairRecordService {
         record.setRepairOrderNo(order.getOrderNo());
         record.setDeviceId(dto.getDeviceId());
         record.setDeviceCode(device.getDeviceCode());
+        record.setRepairSequence(calcRepairSequence(dto.getDeviceId()));
+        record.setMaintenanceSequence(calcMaintenanceSequence(dto.getDeviceId()));
+        record.setReportTime(dto.getReportTime() != null ? dto.getReportTime() : order.getReportTime());
+        record.setAcceptTime(dto.getAcceptTime() != null ? dto.getAcceptTime() : order.getAcceptTime());
+        record.setStartRepairTime(dto.getStartRepairTime() != null ? dto.getStartRepairTime() : order.getStartRepairTime());
+        record.setFinishTime(dto.getFinishTime() != null ? dto.getFinishTime() : order.getFinishTime());
         record.setMaintainerId(maintainerId);
         record.setMaintainerEmployeeNo(maintainer.getEmployeeNo());
         record.setMaintainerName(maintainer.getRealName());
         record.setFaultReason(dto.getFaultReason());
         record.setProcessDetail(dto.getProcessDetail());
+        record.setFixMeasure(dto.getFixMeasure());
         record.setResultDetail(dto.getResultDetail());
         record.setIsResolved(dto.getIsResolved());
         record.setUsedParts(dto.getUsedParts());
         record.setUsedPartsDesc(dto.getUsedPartsDesc());
+        record.setDelayApplied(dto.getDelayApplied());
+        record.setDelayReason(dto.getDelayReason());
         record.setLaborHours(dto.getLaborHours());
         record.setRepairConclusion(dto.getRepairConclusion());
+        record.setUserConfirmResult(dto.getUserConfirmResult());
+        record.setUserSatisfaction(dto.getUserSatisfaction());
+        record.setPhotoUrls(dto.getPhotoUrls());
+        record.setRemark(dto.getRemark());
         record.setRepairTime(LocalDateTime.now());
         record.setCreateTime(LocalDateTime.now());
         record.setUpdateTime(LocalDateTime.now());
@@ -120,12 +136,23 @@ public class RepairRecordServiceImpl implements RepairRecordService {
         record.setMaintainerId(dto.getMaintainerId() == null ? old.getMaintainerId() : dto.getMaintainerId());
         record.setFaultReason(dto.getFaultReason());
         record.setProcessDetail(dto.getProcessDetail());
+        record.setFixMeasure(dto.getFixMeasure());
         record.setResultDetail(dto.getResultDetail());
         record.setIsResolved(dto.getIsResolved());
         record.setUsedParts(dto.getUsedParts());
         record.setUsedPartsDesc(dto.getUsedPartsDesc());
+        record.setDelayApplied(dto.getDelayApplied());
+        record.setDelayReason(dto.getDelayReason());
         record.setLaborHours(dto.getLaborHours());
         record.setRepairConclusion(dto.getRepairConclusion());
+        record.setUserConfirmResult(dto.getUserConfirmResult());
+        record.setUserSatisfaction(dto.getUserSatisfaction());
+        record.setPhotoUrls(dto.getPhotoUrls());
+        record.setRemark(dto.getRemark());
+        record.setReportTime(dto.getReportTime());
+        record.setAcceptTime(dto.getAcceptTime());
+        record.setStartRepairTime(dto.getStartRepairTime());
+        record.setFinishTime(dto.getFinishTime());
         record.setUpdateTime(LocalDateTime.now());
         repairRecordMapper.updateById(record);
     }
@@ -133,5 +160,41 @@ public class RepairRecordServiceImpl implements RepairRecordService {
     @Override
     public void delete(Long id) {
         repairRecordMapper.deleteById(id);
+    }
+
+    @Override
+    public Map<String, Object> deviceStatistics() {
+        List<RepairRecord> all = repairRecordMapper.selectList(new LambdaQueryWrapper<RepairRecord>().orderByDesc(RepairRecord::getId));
+        Map<String, Object> data = new HashMap<>();
+        Map<Long, Long> frequent = all.stream().collect(Collectors.groupingBy(RepairRecord::getDeviceId, Collectors.counting()));
+        data.put("frequentRepairDevices", frequent.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .limit(10).collect(Collectors.toList()));
+
+        Map<Long, Double> avgHours = all.stream()
+                .filter(r -> r.getStartRepairTime() != null && r.getFinishTime() != null && !r.getFinishTime().isBefore(r.getStartRepairTime()))
+                .collect(Collectors.groupingBy(RepairRecord::getDeviceId,
+                        Collectors.averagingDouble(r -> java.time.Duration.between(r.getStartRepairTime(), r.getFinishTime()).toHours())));
+        data.put("longestAvgRepairDevices", avgHours.entrySet().stream()
+                .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
+                .limit(10).collect(Collectors.toList()));
+
+        data.put("nearRetireDevices", frequent.entrySet().stream()
+                .filter(e -> e.getValue() >= 8)
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .collect(Collectors.toList()));
+        return data;
+    }
+
+    private Integer calcRepairSequence(Long deviceId) {
+        Long count = repairRecordMapper.selectCount(new LambdaQueryWrapper<RepairRecord>().eq(RepairRecord::getDeviceId, deviceId));
+        return (count == null ? 0 : count.intValue()) + 1;
+    }
+
+    private Integer calcMaintenanceSequence(Long deviceId) {
+        Long count = repairRecordMapper.selectCount(new LambdaQueryWrapper<RepairRecord>()
+                .eq(RepairRecord::getDeviceId, deviceId)
+                .eq(RepairRecord::getIsResolved, 1));
+        return (count == null ? 0 : count.intValue()) + 1;
     }
 }
