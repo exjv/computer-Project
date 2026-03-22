@@ -50,6 +50,13 @@
           <el-date-picker v-model="analyticsQuery.customRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" range-separator="~" start-placeholder="开始" end-placeholder="结束"/>
         </el-form-item>
         <el-button type="primary" @click="loadAnalytics">刷新分析</el-button>
+        <el-button type="success" @click="exportStatistics">导出统计Excel</el-button>
+        <el-form-item label="导出设备">
+          <el-select v-model="analyticsQuery.exportDeviceId" clearable style="width:220px">
+            <el-option v-for="d in devices" :key="d.id" :label="`${d.deviceCode || ''}-${d.deviceName || ''}`" :value="d.id"/>
+          </el-select>
+        </el-form-item>
+        <el-button type="warning" @click="exportRecords">按设备导出维修记录</el-button>
       </el-form>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         <div ref="trendChartRef" style="width:48%;height:300px;min-width:420px"></div>
@@ -154,6 +161,7 @@ import { useUserStore } from '../../stores/user'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
+import axios from 'axios'
 
 const router = useRouter()
 const role = computed(()=>useUserStore().userInfo.role)
@@ -165,7 +173,7 @@ const allStatus = ['待提交','已提交/待审核','审核通过','审核驳�
 const query=reactive({orderNo:'',title:'',priority:'',status:'',deviceType:'',faultType:'',assignMaintainerId:'',applyDelay:'',needPurchaseParts:'',reportTimeStart:'',reportTimeEnd:'',sortField:'id',sortOrder:'desc'}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
 const devices=ref([]),maintainers=ref([])
 const stats=reactive({})
-const analyticsQuery=reactive({ rangeType:'month', customRange:[] })
+const analyticsQuery=reactive({ rangeType:'month', customRange:[], exportDeviceId:'' })
 const analyticsData=reactive({})
 const recommendations=ref([])
 const addDialog=ref(false),assignDialog=ref(false),statusDialog=ref(false),editMode=ref(false)
@@ -249,6 +257,42 @@ const renderCharts = () => {
   })
   const satisfaction = analyticsData.satisfactionStats?.distribution || []
   satisfactionChart.setOption({ title:{text:'用户满意度统计'}, tooltip:{trigger:'item'}, series:[{type:'pie',radius:'60%',data:satisfaction.map(v=>({name:v.name,value:v.value}))}] })
+}
+const downloadBlob = (blob, fileName) => {
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+const exportStatistics = async () => {
+  const token = localStorage.getItem('token')
+  const params = { rangeType: analyticsQuery.rangeType }
+  if (analyticsQuery.rangeType === 'custom' && analyticsQuery.customRange?.length === 2) {
+    params.start = analyticsQuery.customRange[0]
+    params.end = analyticsQuery.customRange[1]
+  }
+  const res = await axios.get('/api/repair-orders/exports/statistics-excel', {
+    params,
+    responseType: 'blob',
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  })
+  downloadBlob(res.data, 'order_statistics_report.xlsx')
+}
+const exportRecords = async () => {
+  const token = localStorage.getItem('token')
+  const params = {}
+  if (analyticsQuery.exportDeviceId) params.deviceId = analyticsQuery.exportDeviceId
+  if (analyticsData.rangeStart && analyticsData.rangeEnd) {
+    params.start = String(analyticsData.rangeStart).replace('T', ' ').slice(0,19)
+    params.end = String(analyticsData.rangeEnd).replace('T', ' ').slice(0,19)
+  }
+  const res = await axios.get('/api/repair-orders/exports/records-excel', {
+    params,
+    responseType: 'blob',
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  })
+  downloadBlob(res.data, 'repair_records_report.xlsx')
 }
 const canAction = (row, action) => {
   if (action === 'ADMIN_APPROVE' || action === 'ADMIN_REJECT') return isAdmin.value && row.status === '已提交/待审核'

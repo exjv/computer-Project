@@ -15,6 +15,8 @@ import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
+import com.jou.networkrepair.module.repair.entity.RepairRecord;
+import com.jou.networkrepair.module.repair.mapper.RepairRecordMapper;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.system.entity.FileAttachment;
 import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
@@ -26,8 +28,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -39,6 +48,7 @@ import java.util.Map;
 public class RepairOrderController {
     private final RepairOrderService repairOrderService;
     private final FileAttachmentMapper fileAttachmentMapper;
+    private final RepairRecordMapper repairRecordMapper;
 
     @GetMapping("/page")
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
@@ -256,6 +266,80 @@ public class RepairOrderController {
         return ApiResult.success("上传记录成功", null);
     }
 
+    @GetMapping("/exports/statistics-excel")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
+    @Loggable(module = "工单管理", operationType = "导出", operationDesc = "导出工单统计报表")
+    public void exportStatisticsExcel(@RequestParam(required = false, defaultValue = "month") String rangeType,
+                                      @RequestParam(required = false) String start,
+                                      @RequestParam(required = false) String end,
+                                      HttpServletResponse response) throws Exception {
+        Map<String, Object> analytics = repairOrderService.analytics(rangeType, start, end);
+        Workbook wb = new XSSFWorkbook();
+        Sheet summary = wb.createSheet("工单统计汇总");
+        int idx = 0;
+        idx = writeRow(summary, idx, "统计维度", String.valueOf(analytics.get("rangeType")));
+        idx = writeRow(summary, idx, "统计开始", String.valueOf(analytics.get("rangeStart")));
+        idx = writeRow(summary, idx, "统计结束", String.valueOf(analytics.get("rangeEnd")));
+        idx = writeRow(summary, idx, "报修数量", String.valueOf(analytics.get("repairCount")));
+        idx = writeRow(summary, idx, "已完成工单", String.valueOf(analytics.get("finishedCount")));
+        idx = writeRow(summary, idx, "未完成工单", String.valueOf(analytics.get("unfinishedCount")));
+        idx = writeRow(summary, idx, "平均维修时长(小时)", String.valueOf(analytics.get("avgRepairHours")));
+        idx = writeRow(summary, idx, "延期工单占比(%)", String.valueOf(analytics.get("delayOrderRatio")));
+        idx = writeRow(summary, idx, "配件采购工单占比(%)", String.valueOf(analytics.get("partsPurchaseRatio")));
+
+        Sheet trend = wb.createSheet("报修趋势");
+        writeHeader(trend, "时间桶", "报修数量", "已完成数量");
+        List<Map<String, Object>> trendList = (List<Map<String, Object>>) analytics.get("timeTrend");
+        if (trendList != null) {
+            int rowNo = 1;
+            for (Map<String, Object> v : trendList) {
+                Row row = trend.createRow(rowNo++);
+                row.createCell(0).setCellValue(String.valueOf(v.get("bucket")));
+                row.createCell(1).setCellValue(String.valueOf(v.get("reportCount")));
+                row.createCell(2).setCellValue(String.valueOf(v.get("finishedCount")));
+            }
+        }
+        writeWorkbook(response, wb, "order_statistics_report.xlsx");
+    }
+
+    @GetMapping("/exports/records-excel")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
+    @Loggable(module = "维修记录", operationType = "导出", operationDesc = "按设备导出维修记录报表")
+    public void exportRecordsExcel(@RequestParam(required = false) Long deviceId,
+                                   @RequestParam(required = false) String start,
+                                   @RequestParam(required = false) String end,
+                                   HttpServletResponse response) throws Exception {
+        LocalDateTime startTime = parseDateTime(start);
+        LocalDateTime endTime = parseDateTime(end);
+        List<RepairRecord> records = repairRecordMapper.selectList(new LambdaQueryWrapper<RepairRecord>()
+                .eq(deviceId != null, RepairRecord::getDeviceId, deviceId)
+                .ge(startTime != null, RepairRecord::getReportTime, startTime)
+                .le(endTime != null, RepairRecord::getReportTime, endTime)
+                .orderByDesc(RepairRecord::getId));
+        Workbook wb = new XSSFWorkbook();
+        Sheet sheet = wb.createSheet("维修记录");
+        writeHeader(sheet, "工单编号", "设备编号", "第几次报修", "第几次维修", "故障原因", "处理措施", "处理结果", "是否解决", "维修人员", "报修时间", "完成时间", "用户满意度", "反馈结论", "备注");
+        int rowNo = 1;
+        for (RepairRecord r : records) {
+            Row row = sheet.createRow(rowNo++);
+            row.createCell(0).setCellValue(str(r.getRepairOrderNo()));
+            row.createCell(1).setCellValue(str(r.getDeviceCode()));
+            row.createCell(2).setCellValue(r.getRepairSequence() == null ? "" : r.getRepairSequence());
+            row.createCell(3).setCellValue(r.getMaintenanceSequence() == null ? "" : r.getMaintenanceSequence());
+            row.createCell(4).setCellValue(str(r.getFaultReason()));
+            row.createCell(5).setCellValue(str(r.getFixMeasure()));
+            row.createCell(6).setCellValue(str(r.getResultDetail()));
+            row.createCell(7).setCellValue(r.getIsResolved() != null && r.getIsResolved() == 1 ? "是" : "否");
+            row.createCell(8).setCellValue(str(r.getMaintainerName()));
+            row.createCell(9).setCellValue(str(r.getReportTime()));
+            row.createCell(10).setCellValue(str(r.getFinishTime()));
+            row.createCell(11).setCellValue(r.getUserSatisfaction() == null ? "" : r.getUserSatisfaction());
+            row.createCell(12).setCellValue(str(r.getRepairConclusion()));
+            row.createCell(13).setCellValue(str(r.getRemark()));
+        }
+        writeWorkbook(response, wb, "repair_records_report.xlsx");
+    }
+
     private LocalDateTime parseDateTime(String value) {
         if (value == null || value.trim().isEmpty()) return null;
         try {
@@ -263,5 +347,31 @@ public class RepairOrderController {
         } catch (Exception ignore) {
             return null;
         }
+    }
+
+    private int writeRow(Sheet sheet, int idx, String key, String val) {
+        Row row = sheet.createRow(idx);
+        row.createCell(0).setCellValue(key);
+        row.createCell(1).setCellValue(val == null ? "" : val);
+        return idx + 1;
+    }
+
+    private void writeHeader(Sheet sheet, String... headers) {
+        Row row = sheet.createRow(0);
+        for (int i = 0; i < headers.length; i++) row.createCell(i).setCellValue(headers[i]);
+    }
+
+    private void writeWorkbook(HttpServletResponse response, Workbook wb, String fileName) throws Exception {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        wb.write(bos);
+        wb.close();
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+        response.getOutputStream().write(bos.toByteArray());
+        response.flushBuffer();
+    }
+
+    private String str(Object o) {
+        return o == null ? "" : String.valueOf(o);
     }
 }
