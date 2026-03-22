@@ -114,14 +114,21 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setOriginalExpectedFinishTime(dto.getOriginalExpectedFinishTime());
         order.setExpectedFinishTime(dto.getOriginalExpectedFinishTime());
         order.setOrderNo(generateOrderNo());
-        order.setStatus(RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel());
-        order.setProgress(10);
+        boolean requireAdminApprove = requireAdminApproveForDevice(existsDevice);
+        order.setStatus(requireAdminApprove ? RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel() : RepairOrderStatusEnum.PENDING_ASSIGN.getLabel());
+        order.setProgress(requireAdminApprove ? 10 : 30);
         order.setReportTime(LocalDateTime.now());
         order.setCreateTime(LocalDateTime.now());
         order.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.insert(order);
-        addFlow(order.getId(), null, RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel(), "SUBMIT", userId, "user", "用户提交报修工单");
-        addBusinessLog(order, "SUBMIT", userId, "user", null, RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel(), "用户提交报修工单");
+        addFlow(order.getId(), null, order.getStatus(), "SUBMIT", userId, "user", "用户提交报修工单");
+        addBusinessLog(order, "SUBMIT", userId, "user", null, order.getStatus(), "用户提交报修工单");
+        if (!requireAdminApprove) {
+            addFlow(order.getId(), RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel(), RepairOrderStatusEnum.PENDING_ASSIGN.getLabel(),
+                    "SYSTEM_SKIP_APPROVE", null, "system", "普通设备跳过审批直接待分配");
+            addBusinessLog(order, "SYSTEM_SKIP_APPROVE", null, "system",
+                    RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel(), RepairOrderStatusEnum.PENDING_ASSIGN.getLabel(), "设备不属于审批范围");
+        }
 
         NetworkDevice device = new NetworkDevice();
         device.setId(order.getDeviceId());
@@ -567,6 +574,14 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             }
         }
         return count == 0 ? 24D : total / count;
+    }
+
+    private boolean requireAdminApproveForDevice(NetworkDevice device) {
+        if (device == null) return true;
+        String type = device.getDeviceType() == null ? "" : device.getDeviceType();
+        String name = device.getDeviceName() == null ? "" : device.getDeviceName();
+        return type.contains("核心") || type.contains("防火墙") || type.contains("服务器")
+                || name.contains("核心") || name.contains("防火墙") || name.contains("服务器");
     }
 
     private double calcSkillMatchScore(List<RepairOrder> finishedOrders, String targetDeviceType) {

@@ -129,8 +129,10 @@ import { reactive, ref, onMounted, computed } from 'vue'
 import { getPage, postApi, putApi, delApi } from '../../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../../stores/user'
+import { useRouter } from 'vue-router'
 
 const statusOptions = ['正常', '维修中', '停用', '报废']
+const router = useRouter()
 const isAdmin = computed(()=>useUserStore().userInfo.role==='admin')
 const query=reactive({deviceCode:'',deviceName:'',deviceType:'',status:'',location:''}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
 const dialog=ref(false),mode=ref('edit'),form=reactive({})
@@ -141,7 +143,7 @@ const load=async()=>{const r=await getPage('/devices/page',{...query,...page});l
 const reset=()=>{Object.assign(query,{deviceCode:'',deviceName:'',deviceType:'',status:'',location:''});load()}
 const openAdd=()=>{mode.value='edit';Object.assign(form,{id:null,deviceCode:'',deviceName:'',deviceType:'交换机',deviceTypeName:'',brand:'',model:'',serialNo:'',campus:'',building:'',machineRoom:'',office:'',location:'',purchaseDate:'',enableDate:'',warrantyExpireDate:'',ownerName:'',ownerEmployeeNo:'',managementDept:'',status:'正常',lastFaultTime:'',totalRepairOrderCount:0,totalRepairCount:0,faultReasonStats:'',remark:''});dialog.value=true}
 const edit=(row)=>{mode.value='edit';Object.assign(form,row);dialog.value=true}
-const detail=async(row)=>{mode.value='view';Object.assign(form,row);profile.value=await getPage(`/devices/${row.id}/profile`);dialog.value=true}
+const detail=(row)=>router.push(`/devices/${row.id}/profile`)
 
 const save=async()=>{
   const ok = await getPage('/devices/check-code', { deviceCode: form.deviceCode, excludeId: form.id || undefined })

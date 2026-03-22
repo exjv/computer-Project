@@ -8,6 +8,7 @@ const routes = [
     { path: '', component: () => import('../views/dashboard/HomeView.vue') },
     { path: 'users', component: () => import('../views/user/UserView.vue'), meta: { permission: 'user:manage' } },
     { path: 'devices', component: () => import('../views/device/DeviceView.vue'), meta: { permission: 'device:manage' } },
+    { path: 'devices/:id/profile', component: () => import('../views/device/DeviceDetailView.vue'), meta: { permission: 'device:manage' } },
     { path: 'repair-orders', component: () => import('../views/repair/RepairOrderView.vue') },
     { path: 'repair-apply', component: () => import('../views/repair/RepairApplyView.vue') },
     { path: 'my-repairs', component: () => import('../views/repair/MyRepairRecordsView.vue') },

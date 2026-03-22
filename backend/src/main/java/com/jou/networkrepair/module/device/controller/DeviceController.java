@@ -6,6 +6,7 @@ import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
+import com.jou.networkrepair.module.device.dto.DeviceAttachmentDTO;
 import com.jou.networkrepair.module.device.dto.DeviceStatusDTO;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;
@@ -13,6 +14,8 @@ import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairRecord;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairRecordMapper;
+import com.jou.networkrepair.module.system.entity.FileAttachment;
+import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -30,6 +33,7 @@ public class DeviceController {
     private final DeviceMapper deviceMapper;
     private final RepairOrderMapper repairOrderMapper;
     private final RepairRecordMapper repairRecordMapper;
+    private final FileAttachmentMapper fileAttachmentMapper;
 
     @GetMapping("/page")
     public ApiResult<Page<NetworkDevice>> page(@RequestParam Long current, @RequestParam Long size,
@@ -70,7 +74,13 @@ public class DeviceController {
                 Comparator.nullsLast(Comparator.naturalOrder())));
         boolean isHighFault = totalOrders >= 5;
         boolean needReplace = totalOrders >= 8 || "停用".equals(device.getStatus());
+        boolean suggestPatrol = totalOrders >= 4 || totalRepairs >= 4;
+        boolean inWarranty = device.getWarrantyExpireDate() != null && !device.getWarrantyExpireDate().isBefore(java.time.LocalDate.now());
         Long avgHours = calcAverageDurationHours(orders);
+        List<FileAttachment> photos = fileAttachmentMapper.selectList(new LambdaQueryWrapper<FileAttachment>()
+                .eq(FileAttachment::getBusinessType, "DEVICE")
+                .eq(FileAttachment::getBusinessId, id)
+                .orderByDesc(FileAttachment::getId));
 
         Map<String, Object> data = new HashMap<>();
         data.put("device", device);
@@ -83,7 +93,38 @@ public class DeviceController {
         data.put("recentOrders", orders.stream().limit(10).collect(Collectors.toList()));
         data.put("recentRecords", records.stream().limit(10).collect(Collectors.toList()));
         data.put("faultReasonStats", reasonStats);
+        data.put("inWarranty", inWarranty);
+        data.put("suggestPatrol", suggestPatrol);
+        data.put("photos", photos);
         return ApiResult.success(data);
+    }
+
+    @GetMapping("/{id}/attachments")
+    public ApiResult<List<FileAttachment>> attachments(@PathVariable Long id, @RequestParam(required = false) String category) {
+        NetworkDevice device = deviceMapper.selectById(id);
+        if (device == null) throw new BusinessException("设备不存在");
+        LambdaQueryWrapper<FileAttachment> qw = new LambdaQueryWrapper<FileAttachment>()
+                .eq(FileAttachment::getBusinessType, "DEVICE")
+                .eq(FileAttachment::getBusinessId, id)
+                .like(category != null && !category.trim().isEmpty(), FileAttachment::getRemark, "[CATEGORY:" + category + "]");
+        return ApiResult.success(fileAttachmentMapper.selectList(qw.orderByDesc(FileAttachment::getId)));
+    }
+
+    @PostMapping("/{id}/attachments")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.DEVICE_MANAGE + "') || @permissionService.hasPermission('" + PermissionCode.REPAIR_RECORD_WRITE + "')")
+    public ApiResult<Void> uploadAttachment(@PathVariable Long id, @RequestBody @Validated DeviceAttachmentDTO dto) {
+        NetworkDevice device = deviceMapper.selectById(id);
+        if (device == null) throw new BusinessException("设备不存在");
+        FileAttachment attachment = new FileAttachment();
+        attachment.setBusinessType("DEVICE");
+        attachment.setBusinessId(id);
+        attachment.setFileName(dto.getFileName());
+        attachment.setFileUrl(dto.getFileUrl());
+        attachment.setFileType(dto.getFileType());
+        attachment.setUploadTime(LocalDateTime.now());
+        attachment.setRemark("[CATEGORY:" + dto.getCategory() + "] " + (dto.getRemark() == null ? "" : dto.getRemark()));
+        fileAttachmentMapper.insert(attachment);
+        return ApiResult.success("上传成功", null);
     }
 
     @PostMapping
