@@ -158,6 +158,27 @@ public class RepairOrderController {
         return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
+    @GetMapping("/feedback/statistics")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
+    public ApiResult<Map<String, Object>> feedbackStats() {
+        return ApiResult.success(repairOrderService.feedbackStats());
+    }
+
+    @GetMapping("/feedback/low-satisfaction")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
+    public ApiResult<Page<Map<String, Object>>> lowSatisfactionOrders(@RequestParam Long current,
+                                                                      @RequestParam Long size,
+                                                                      @RequestParam(required = false, defaultValue = "2") Integer threshold) {
+        return ApiResult.success(repairOrderService.lowSatisfactionOrders(current, size, threshold));
+    }
+
+    @GetMapping("/feedback/unresolved")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
+    public ApiResult<Page<Map<String, Object>>> unresolvedFeedbackOrders(@RequestParam Long current,
+                                                                         @RequestParam Long size) {
+        return ApiResult.success(repairOrderService.unresolvedFeedbackOrders(current, size));
+    }
+
     @GetMapping("/status-options")
     public ApiResult<List<String>> statusOptions() {
         return ApiResult.success(com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum.labels());

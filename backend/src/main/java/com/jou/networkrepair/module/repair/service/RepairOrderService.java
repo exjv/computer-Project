@@ -36,6 +36,9 @@ public interface RepairOrderService {
     void close(Long id, RepairOrderCloseDTO dto, Long userId);
     void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role);
     Map<String, Object> stats(Long userId, String role);
+    Map<String, Object> feedbackStats();
+    Page<Map<String, Object>> lowSatisfactionOrders(Long current, Long size, Integer threshold);
+    Page<Map<String, Object>> unresolvedFeedbackOrders(Long current, Long size);
     List<DispatchResultVO> autoDispatch();
     List<AssignmentRecommendationVO> recommendMaintainers(Long id, Long userId, String role);
     RepairEstimateVO estimateFinishTime(Long id, Long userId, String role);

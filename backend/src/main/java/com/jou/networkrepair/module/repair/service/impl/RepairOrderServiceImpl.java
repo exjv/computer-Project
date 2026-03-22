@@ -272,6 +272,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
             checkStatus(order.getStatus(), RepairOrderStatusEnum.PENDING_CONFIRM.getLabel());
+            validateFeedbackInput(dto);
             order.setConfirmTime(LocalDateTime.now());
             order.setUserConfirmResult("已解决");
             order.setSatisfactionScore(dto.getSatisfactionScore());
@@ -282,6 +283,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             requireRole(role, "user");
             if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
             checkStatus(order.getStatus(), RepairOrderStatusEnum.PENDING_CONFIRM.getLabel());
+            validateFeedbackInput(dto);
             order.setConfirmTime(LocalDateTime.now());
             order.setUserConfirmResult("未解决");
             order.setSatisfactionScore(dto.getSatisfactionScore());
@@ -436,8 +438,52 @@ public class RepairOrderServiceImpl implements RepairOrderService {
                 RepairOrderStatusEnum.IN_REPAIR.getLabel(),
                 RepairOrderStatusEnum.PENDING_CONFIRM.getLabel()))));
         map.put("finished", repairOrderMapper.selectCount(base.clone().eq(RepairOrder::getStatus, RepairOrderStatusEnum.FINISHED.getLabel())));
+        if ("admin".equals(role)) {
+            map.putAll(feedbackStats());
+        }
         fillPredictionStats(map, userId, role);
         return map;
+    }
+
+    @Override
+    public Map<String, Object> feedbackStats() {
+        Map<String, Object> map = new HashMap<>();
+        Long totalFeedback = repairFeedbackMapper.selectCount(new LambdaQueryWrapper<>());
+        map.put("feedbackTotalCount", totalFeedback == null ? 0L : totalFeedback);
+        if (totalFeedback == null || totalFeedback == 0L) {
+            map.put("satisfactionAvgScore", 0D);
+            map.put("lowSatisfactionCount", 0L);
+            map.put("unresolvedFeedbackCount", 0L);
+            return map;
+        }
+        List<RepairFeedback> feedbackList = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
+                .isNotNull(RepairFeedback::getSatisfactionScore));
+        double avg = feedbackList.stream().mapToInt(v -> v.getSatisfactionScore() == null ? 0 : v.getSatisfactionScore()).average().orElse(0D);
+        Long lowSatisfactionCount = repairFeedbackMapper.selectCount(new LambdaQueryWrapper<RepairFeedback>()
+                .isNotNull(RepairFeedback::getSatisfactionScore)
+                .le(RepairFeedback::getSatisfactionScore, 2));
+        Long unresolvedCount = repairFeedbackMapper.selectCount(new LambdaQueryWrapper<RepairFeedback>()
+                .eq(RepairFeedback::getConfirmResult, "未解决"));
+        map.put("satisfactionAvgScore", avg);
+        map.put("lowSatisfactionCount", lowSatisfactionCount == null ? 0L : lowSatisfactionCount);
+        map.put("unresolvedFeedbackCount", unresolvedCount == null ? 0L : unresolvedCount);
+        return map;
+    }
+
+    @Override
+    public Page<Map<String, Object>> lowSatisfactionOrders(Long current, Long size, Integer threshold) {
+        int scoreThreshold = threshold == null ? 2 : Math.max(1, Math.min(threshold, 5));
+        return pageFeedbackOrders(current, size, new LambdaQueryWrapper<RepairFeedback>()
+                .isNotNull(RepairFeedback::getSatisfactionScore)
+                .le(RepairFeedback::getSatisfactionScore, scoreThreshold)
+                .orderByDesc(RepairFeedback::getConfirmTime));
+    }
+
+    @Override
+    public Page<Map<String, Object>> unresolvedFeedbackOrders(Long current, Long size) {
+        return pageFeedbackOrders(current, size, new LambdaQueryWrapper<RepairFeedback>()
+                .eq(RepairFeedback::getConfirmResult, "未解决")
+                .orderByDesc(RepairFeedback::getConfirmTime));
     }
 
     @Override
@@ -834,6 +880,45 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         addBusinessLog(order, "USER_FEEDBACK", userId, "user", order.getStatus(), order.getStatus(),
                 "确认结果：" + confirmResult + "；满意度：" + (dto.getSatisfactionScore() == null ? "-" : dto.getSatisfactionScore())
                         + "；反馈：" + (dto.getFeedbackContent() == null ? "无" : dto.getFeedbackContent()));
+    }
+
+    private Page<Map<String, Object>> pageFeedbackOrders(Long current, Long size, LambdaQueryWrapper<RepairFeedback> wrapper) {
+        Page<RepairFeedback> feedbackPage = repairFeedbackMapper.selectPage(new Page<>(current, size), wrapper);
+        Page<Map<String, Object>> result = new Page<>(feedbackPage.getCurrent(), feedbackPage.getSize(), feedbackPage.getTotal());
+        if (feedbackPage.getRecords() == null || feedbackPage.getRecords().isEmpty()) {
+            result.setRecords(Collections.emptyList());
+            return result;
+        }
+        List<Long> orderIds = feedbackPage.getRecords().stream().map(RepairFeedback::getRepairOrderId).collect(java.util.stream.Collectors.toList());
+        Map<Long, RepairOrder> orderMap = repairOrderMapper.selectBatchIds(orderIds).stream()
+                .collect(java.util.stream.Collectors.toMap(RepairOrder::getId, v -> v, (a, b) -> a));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (RepairFeedback feedback : feedbackPage.getRecords()) {
+            RepairOrder order = orderMap.get(feedback.getRepairOrderId());
+            Map<String, Object> row = new HashMap<>();
+            row.put("feedbackId", feedback.getId());
+            row.put("repairOrderId", feedback.getRepairOrderId());
+            row.put("orderNo", order == null ? null : order.getOrderNo());
+            row.put("title", order == null ? null : order.getTitle());
+            row.put("orderStatus", order == null ? null : order.getStatus());
+            row.put("assignMaintainerName", order == null ? null : order.getAssignMaintainerName());
+            row.put("confirmResult", feedback.getConfirmResult());
+            row.put("satisfactionScore", feedback.getSatisfactionScore());
+            row.put("feedbackContent", feedback.getFeedbackContent());
+            row.put("confirmTime", feedback.getConfirmTime());
+            rows.add(row);
+        }
+        result.setRecords(rows);
+        return result;
+    }
+
+    private void validateFeedbackInput(RepairOrderActionDTO dto) {
+        if (dto.getSatisfactionScore() == null || dto.getSatisfactionScore() < 1 || dto.getSatisfactionScore() > 5) {
+            throw new BusinessException("请填写1~5分满意度");
+        }
+        if (dto.getFeedbackContent() == null || dto.getFeedbackContent().trim().isEmpty()) {
+            throw new BusinessException("请填写反馈意见");
+        }
     }
 
     private void requireRole(String current, String expected) {

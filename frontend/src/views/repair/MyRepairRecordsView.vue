@@ -98,6 +98,14 @@ const openAcceptance = row => {
 }
 
 const submitAcceptance = async () => {
+  if (!acceptForm.satisfactionScore || acceptForm.satisfactionScore < 1 || acceptForm.satisfactionScore > 5) {
+    ElMessage.warning('请填写1~5分满意度')
+    return
+  }
+  if (!acceptForm.feedbackContent || !acceptForm.feedbackContent.trim()) {
+    ElMessage.warning('请填写反馈意见')
+    return
+  }
   await putApi(`/repair-orders/${acceptForm.id}/action`, {
     action: acceptForm.action,
     satisfactionScore: acceptForm.satisfactionScore,

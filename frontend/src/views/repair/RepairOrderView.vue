@@ -25,6 +25,16 @@
       4小时内命中：{{ stats.predictionWithin4hCount || 0 }}，
       24小时内命中：{{ stats.predictionWithin24hCount || 0 }}
     </el-card>
+    <el-card v-if="isAdmin" style="margin-bottom:10px">
+      反馈总数：{{ stats.feedbackTotalCount || 0 }}，
+      平均满意度：{{ Number(stats.satisfactionAvgScore || 0).toFixed(2) }}分，
+      差评工单（<=2分）：{{ stats.lowSatisfactionCount || 0 }}，
+      未解决返修：{{ stats.unresolvedFeedbackCount || 0 }}
+      <div style="margin-top:8px">
+        <el-button size="small" type="warning" @click="openLowDialog">查看差评工单</el-button>
+        <el-button size="small" type="danger" @click="openUnresolvedDialog">查看未解决返修</el-button>
+      </div>
+    </el-card>
 
     <el-table :data="list" style="margin-top:12px">
       <el-table-column prop="orderNo" label="工单编号" width="180" />
@@ -44,7 +54,6 @@
           <el-button v-if="canAction(s.row,'MAINTAINER_ACCEPT')" link @click="quickAction(s.row,'MAINTAINER_ACCEPT')">接单</el-button>
           <el-button v-if="canAction(s.row,'MAINTAINER_START')" link @click="quickAction(s.row,'MAINTAINER_START')">开始维修</el-button>
           <el-button v-if="canAction(s.row,'MAINTAINER_FINISH')" link @click="quickAction(s.row,'MAINTAINER_FINISH')">提交完工</el-button>
-          <el-button v-if="canAction(s.row,'USER_CONFIRM_RESOLVED')" link @click="quickAction(s.row,'USER_CONFIRM_RESOLVED')">确认修复</el-button>
           <el-button v-if="isAdmin || isMaintainer" link @click="changeStatus(s.row)">手工改状态</el-button>
         </template>
       </el-table-column>
@@ -88,6 +97,25 @@
     <el-dialog v-model="delayDialog" title="延期审批"><el-form :model="delayForm"><el-form-item label="审批结果"><el-radio-group v-model="delayForm.approved"><el-radio :label="true">通过</el-radio><el-radio :label="false">驳回</el-radio></el-radio-group></el-form-item><el-form-item label="延期完成时间"><el-date-picker v-model="delayForm.delayedExpectedFinishTime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss"/></el-form-item><el-form-item label="备注"><el-input type="textarea" v-model="delayForm.remark"/></el-form-item></el-form><template #footer><el-button @click="delayDialog=false">取消</el-button><el-button type="primary" @click="saveDelayApprove">提交</el-button></template></el-dialog>
     <el-dialog v-model="closeDialog" title="关闭工单"><el-form :model="closeForm"><el-form-item label="关闭类型"><el-radio-group v-model="closeForm.forceClose"><el-radio :label="false">正常关闭</el-radio><el-radio :label="true">强制关闭</el-radio></el-radio-group></el-form-item><el-form-item label="关闭原因"><el-input type="textarea" v-model="closeForm.closeReason"/></el-form-item></el-form><template #footer><el-button @click="closeDialog=false">取消</el-button><el-button type="primary" @click="saveClose">提交</el-button></template></el-dialog>
     <el-dialog v-model="statusDialog" title="修改工单状态"><el-form :model="statusForm"><el-form-item label="状态"><el-select v-model="statusForm.status"><el-option v-for="s in allStatus" :key="s" :label="s" :value="s"/></el-select></el-form-item></el-form><template #footer><el-button @click="statusDialog=false">取消</el-button><el-button type="primary" @click="saveStatus">保存</el-button></template></el-dialog>
+    <el-dialog v-model="lowDialog" title="差评工单列表" width="900px">
+      <el-table :data="lowList">
+        <el-table-column prop="orderNo" label="工单编号" width="180"/>
+        <el-table-column prop="title" label="标题" min-width="140"/>
+        <el-table-column prop="satisfactionScore" label="满意度" width="90"/>
+        <el-table-column prop="feedbackContent" label="反馈意见" min-width="220"/>
+        <el-table-column prop="confirmTime" label="确认时间" width="180"/>
+      </el-table>
+    </el-dialog>
+    <el-dialog v-model="unresolvedDialog" title="未解决返修工单列表" width="900px">
+      <el-table :data="unresolvedList">
+        <el-table-column prop="orderNo" label="工单编号" width="180"/>
+        <el-table-column prop="title" label="标题" min-width="140"/>
+        <el-table-column prop="orderStatus" label="当前状态" width="130"/>
+        <el-table-column prop="assignMaintainerName" label="维修人员" width="110"/>
+        <el-table-column prop="feedbackContent" label="反馈意见" min-width="220"/>
+        <el-table-column prop="confirmTime" label="确认时间" width="180"/>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 <script setup>
@@ -110,6 +138,8 @@ const stats=reactive({})
 const recommendations=ref([])
 const addDialog=ref(false),assignDialog=ref(false),statusDialog=ref(false),editMode=ref(false)
 const reassignDialog=ref(false),delayDialog=ref(false),closeDialog=ref(false)
+const lowDialog=ref(false),unresolvedDialog=ref(false)
+const lowList=ref([]),unresolvedList=ref([])
 const form=reactive({id:null,deviceId:'',title:'',description:'',priority:'中'})
 const assignForm=reactive({id:null,assignMaintainerId:null}),statusForm=reactive({id:null,status:'维修中'})
 const reassignForm=reactive({id:null,assignMaintainerId:null,remark:''})
@@ -134,12 +164,21 @@ const saveStatus=async()=>{await putApi(`/repair-orders/${statusForm.id}/status`
 const autoDispatch=async()=>{const r=await autoDispatchApi();ElMessage.success(`自动分配完成，共分配${r.count}条工单`);load()}
 const goDetail = (row)=> router.push(`/repair-orders/${row.id}`)
 const quickAction = async (row, action) => { await putApi(`/repair-orders/${row.id}/action`, { action }); ElMessage.success('操作成功'); await load() }
+const openLowDialog = async () => {
+  const data = await getPage('/repair-orders/feedback/low-satisfaction', { current: 1, size: 50, threshold: 2 })
+  lowList.value = data.records || []
+  lowDialog.value = true
+}
+const openUnresolvedDialog = async () => {
+  const data = await getPage('/repair-orders/feedback/unresolved', { current: 1, size: 50 })
+  unresolvedList.value = data.records || []
+  unresolvedDialog.value = true
+}
 const canAction = (row, action) => {
   if (action === 'ADMIN_APPROVE' || action === 'ADMIN_REJECT') return isAdmin.value && row.status === '已提交/待审核'
   if (action === 'MAINTAINER_ACCEPT') return isMaintainer.value && row.status === '待接单'
   if (action === 'MAINTAINER_START') return isMaintainer.value && row.status === '维修人员已接单'
   if (action === 'MAINTAINER_FINISH') return isMaintainer.value && row.status === '维修中'
-  if (action === 'USER_CONFIRM_RESOLVED') return isUser.value && row.status === '待验收/待确认'
   return false
 }
 onMounted(async()=>{await load();const d=await getPage('/devices/page',{current:1,size:100});devices.value=d.records||[];if(isAdmin.value){maintainers.value=await getPage('/users/list-by-role',{role:'maintainer'})}})
