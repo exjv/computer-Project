@@ -37,17 +37,8 @@
     </el-table>
     <el-pagination style="margin-top:12px" background layout="prev, pager, next" :total="total" @current-change="p=>{page.current=p;load()}"/>
 
-    <el-dialog v-model="dialog" :title="mode==='view'?'设备完整档案':(form.id?'编辑设备档案':'新增设备档案')" width="980px">
-      <template v-if="mode==='view'">
-        <el-row :gutter="12" style="margin-bottom:12px">
-          <el-col :span="6"><el-card shadow="never"><div>累计报修</div><h3>{{ profile.totalOrders || form.totalRepairRequests || 0 }}</h3></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>累计维修</div><h3>{{ profile.totalRepairs || form.totalRepairCount || 0 }}</h3></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>最近故障时间</div><h4>{{ profile.recentFaultTime || form.lastFaultTime || '-' }}</h4></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>审核策略</div><el-tag :type="form.repairApprovalRequired===1?'warning':'success'">{{ form.repairApprovalRequired===1?'需管理员审核':'无需审核' }}</el-tag></el-card></el-col>
-        </el-row>
-      </template>
-
-      <el-form :model="form" label-width="130px" :disabled="mode==='view'">
+    <el-dialog v-model="dialog" :title="form.id?'编辑设备档案':'新增设备档案'" width="980px">
+      <el-form :model="form" label-width="130px">
         <el-row :gutter="12">
           <el-col :span="12"><el-form-item label="设备编号"><el-input v-model="form.deviceCode"/></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="设备名称"><el-input v-model="form.deviceName"/></el-form-item></el-col>
@@ -86,16 +77,7 @@
         <el-form-item label="备注"><el-input type="textarea" v-model="form.remark"/></el-form-item>
       </el-form>
 
-      <template v-if="mode==='view'">
-        <el-divider>关联工单（最近10条）</el-divider>
-        <el-timeline>
-          <el-timeline-item v-for="o in profile.recentOrders || []" :key="o.id" :timestamp="o.reportTime">
-            {{ o.orderNo }} | {{ o.status }} | {{ o.title }}
-          </el-timeline-item>
-        </el-timeline>
-      </template>
-
-      <template #footer><el-button @click="dialog=false">关闭</el-button><el-button v-if="mode!=='view'" type="primary" @click="save">保存</el-button></template>
+      <template #footer><el-button @click="dialog=false">关闭</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="statusDialog" title="设备状态维护" width="420px">
@@ -117,15 +99,14 @@ import { useUserStore } from '../../stores/user'
 const isAdmin = computed(()=>useUserStore().userInfo.role==='admin')
 const router = useRouter()
 const query=reactive({deviceCode:'',deviceName:'',deviceType:'',campus:'',status:''}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0)
-const dialog=ref(false),mode=ref('edit'),form=reactive({})
-const profile = ref({})
+const dialog=ref(false),form=reactive({})
 
 const blankForm = () => ({ id:null, deviceCode:'', deviceName:'', deviceType:'', brand:'', model:'', serialNumber:'', campus:'', buildingLocation:'', purchaseDate:'', enableDate:'', warrantyExpiryDate:'', ownerName:'', manageDepartment:'', status:'正常', totalRepairRequests:0, totalRepairCount:0, lastFaultTime:'', faultReasonStats:'', repairApprovalRequired:0, remark:'' })
 
 const load=async()=>{const r=await getPage('/devices/page',{...query,...page});list.value=r.records;total.value=r.total}
 const reset=()=>{Object.assign(query,{deviceCode:'',deviceName:'',deviceType:'',campus:'',status:''});load()}
-const openAdd=()=>{mode.value='edit';Object.assign(form,blankForm());dialog.value=true}
-const edit=(row)=>{mode.value='edit';Object.assign(form, blankForm(), row);dialog.value=true}
+const openAdd=()=>{Object.assign(form,blankForm());dialog.value=true}
+const edit=(row)=>{Object.assign(form, blankForm(), row);dialog.value=true}
 const detail=(row)=>{router.push(`/devices/${row.id}`)}
 const save=async()=>{if(form.id) await putApi(`/devices/${form.id}`,form); else await postApi('/devices',form);ElMessage.success('保存成功');dialog.value=false;load()}
 const remove=async(row)=>{await ElMessageBox.confirm('确认删除该设备吗？','删除确认');await delApi(`/devices/${row.id}`);ElMessage.success('删除成功');load()}

@@ -184,6 +184,87 @@ public class DeviceController {
         return ApiResult.success(data);
     }
 
+    @GetMapping("/{id}/detail")
+    public ApiResult<Map<String, Object>> detail(@PathVariable Long id) {
+        NetworkDevice device = deviceMapper.selectById(id);
+        if (device == null) throw new BusinessException("设备不存在");
+
+        List<RepairOrder> orders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .eq(RepairOrder::getDeviceId, id).orderByDesc(RepairOrder::getReportTime));
+        List<Long> orderIds = orders.stream().map(RepairOrder::getId).collect(Collectors.toList());
+        List<RepairOrderFlow> flows = orderIds.isEmpty() ? Collections.emptyList() : repairOrderFlowMapper.selectList(
+                new LambdaQueryWrapper<RepairOrderFlow>().in(RepairOrderFlow::getRepairOrderId, orderIds).orderByAsc(RepairOrderFlow::getCreateTime));
+        List<RepairRecord> records = repairRecordMapper.selectList(new LambdaQueryWrapper<RepairRecord>()
+                .eq(RepairRecord::getDeviceId, id).orderByDesc(RepairRecord::getRepairTime));
+
+        Map<String, Long> reasonStats = records.stream()
+                .filter(r -> r.getFaultReason() != null && !r.getFaultReason().trim().isEmpty())
+                .collect(Collectors.groupingBy(RepairRecord::getFaultReason, Collectors.counting()));
+
+        List<String> photos = orders.stream()
+                .map(RepairOrder::getScenePhotoUrls)
+                .filter(s -> s != null && !s.trim().isEmpty())
+                .flatMap(s -> parsePhotoUrls(s).stream())
+                .distinct()
+                .collect(Collectors.toList());
+
+        long activeOrders = orders.stream().filter(o -> !Arrays.asList("已完成", "已关闭", "已取消", "审核驳回").contains(o.getStatus())).count();
+        long recent90dFaults = orders.stream().filter(o ->
+                o.getReportTime() != null
+                        && o.getReportTime().isAfter(LocalDateTime.now().minusDays(90))
+                        && !Arrays.asList("已取消", "审核驳回").contains(o.getStatus())).count();
+        boolean highFaultWarning = recent90dFaults >= 3 || activeOrders >= 2;
+        boolean inWarranty = device.getWarrantyExpiryDate() != null && !device.getWarrantyExpiryDate().isBefore(LocalDate.now());
+        long topReasonCount = reasonStats.values().stream().max(Long::compareTo).orElse(0L);
+        boolean suggestReplace = orders.size() >= 10 || (!inWarranty && orders.size() >= 6) || topReasonCount >= 5;
+        boolean suggestInspect = !suggestReplace && (highFaultWarning || orders.size() >= 5);
+
+        List<Map<String, Object>> orderList = orders.stream().limit(20).map(o -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", o.getId());
+            m.put("orderNo", o.getOrderNo());
+            m.put("title", o.getTitle());
+            m.put("status", o.getStatus());
+            m.put("priority", o.getPriority());
+            m.put("reportTime", o.getReportTime());
+            m.put("finishTime", o.getFinishTime());
+            return m;
+        }).collect(Collectors.toList());
+        List<Map<String, Object>> timeline = flows.stream().limit(40).map(f -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("time", f.getCreateTime());
+            m.put("fromStatus", f.getFromStatus());
+            m.put("toStatus", f.getToStatus());
+            m.put("action", f.getAction());
+            m.put("remark", f.getRemark());
+            m.put("orderId", f.getRepairOrderId());
+            return m;
+        }).collect(Collectors.toList());
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("device", device);
+        data.put("currentStatus", device.getStatus());
+        data.put("historyRepairCount", records.size());
+        data.put("recentRepairRecord", records.isEmpty() ? null : records.get(0));
+        data.put("repairTimeline", timeline);
+        data.put("faultReasonStats", reasonStats);
+        data.put("repairPhotos", photos);
+        data.put("relatedOrders", orderList);
+        data.put("inWarranty", inWarranty);
+        data.put("highFaultWarning", highFaultWarning);
+        data.put("highFaultThreshold", "近90天报修>=3 或 当前活跃工单>=2");
+        data.put("suggestReplace", suggestReplace);
+        data.put("suggestInspect", suggestInspect);
+        data.put("recommendation", suggestReplace ? "建议更换" : (suggestInspect ? "建议重点巡检" : "维持常规巡检"));
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalOrders", orders.size());
+        stats.put("activeOrders", activeOrders);
+        stats.put("recent90dFaults", recent90dFaults);
+        stats.put("totalRepairs", records.size());
+        data.put("stats", stats);
+        return ApiResult.success(data);
+    }
+
     @PostMapping
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.DEVICE_MANAGE + "')")
     public ApiResult<Void> add(@RequestBody NetworkDevice entity) {
@@ -278,6 +359,18 @@ public class DeviceController {
         entity.setBrandModel((entity.getBrand() == null ? "" : entity.getBrand()) + "/" + (entity.getModel() == null ? "" : entity.getModel()));
         entity.setLocation(entity.getBuildingLocation());
         if (entity.getRepairApprovalRequired() == null) entity.setRepairApprovalRequired(0);
+    }
+
+    private List<String> parsePhotoUrls(String raw) {
+        String value = raw.trim();
+        if (value.startsWith("[") && value.endsWith("]")) {
+            value = value.substring(1, value.length() - 1);
+        }
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .map(s -> s.replace("\"", ""))
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
     }
 
     private Long calcAverageDurationHours(List<RepairOrder> orders) {

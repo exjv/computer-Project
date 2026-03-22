@@ -25,11 +25,6 @@ import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 import com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO;
-import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
-import com.jou.networkrepair.module.system.entity.BusinessLog;
-import com.jou.networkrepair.module.system.entity.RepairFeedback;
-import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
-import com.jou.networkrepair.module.system.mapper.RepairFeedbackMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -260,6 +255,12 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         } else if ("MAINTAINER_PROGRESS".equals(action)) {
             requireRole(role, "maintainer");
             checkMaintainerScope(order, userId);
+            checkStatus(order.getStatus(), "维修中");
+            order.setPartsRequirement(dto.getPartsRequirement());
+            moveStatus(order, "待采购/待配件", 68, userId, role, dto.getRemark() == null ? "申请配件" : dto.getRemark(), action);
+        } else if ("MAINTAINER_PROGRESS".equals(action)) {
+            requireRole(role, "maintainer");
+            checkMaintainerScope(order, userId);
             checkStatus(order.getStatus(), RepairOrderStatusEnum.IN_REPAIR.getLabel());
             if (dto.getProgress() == null) throw new BusinessException("请传入进度");
             order.setProgress(dto.getProgress());
@@ -334,22 +335,6 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             throw new BusinessException("不支持的操作");
         }
         syncDeviceStatus(order.getDeviceId());
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void audit(Long id, RepairOrderAuditDTO dto, Long userId) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        checkStatus(order.getStatus(), RepairOrderStatusEnum.SUBMITTED_PENDING_REVIEW.getLabel());
-        if (Boolean.TRUE.equals(dto.getApproved())) {
-            order.setAuditBy(userId);
-            order.setAuditTime(LocalDateTime.now());
-            moveStatus(order, RepairOrderStatusEnum.REVIEW_APPROVED.getLabel(), 20, userId, "admin", dto.getRemark(), "ADMIN_APPROVE");
-            moveStatus(order, RepairOrderStatusEnum.PENDING_ASSIGN.getLabel(), 30, userId, "admin", "审核通过进入待分配", "ADMIN_TO_ASSIGN");
-        } else {
-            moveStatus(order, RepairOrderStatusEnum.REVIEW_REJECTED.getLabel(), 0, userId, "admin", dto.getRemark(), "ADMIN_REJECT");
-        }
     }
 
     @Override

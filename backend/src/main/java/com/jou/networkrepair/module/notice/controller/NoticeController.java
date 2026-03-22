@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
-import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.notice.entity.Notice;
 import com.jou.networkrepair.module.notice.enums.NoticeStatusEnum;
 import com.jou.networkrepair.module.notice.mapper.NoticeMapper;

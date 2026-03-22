@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -44,19 +43,6 @@ public class PortalController {
         unitMeta.put("servicePhone", "校园网络服务电话：010-12345678");
         unitMeta.put("serviceTime", "服务时间：工作日 08:00-18:00");
         data.put("unitMeta", unitMeta);
-        data.put("notices", notices);
-        return ApiResult.success(data);
-    }
-
-    @GetMapping("/workbench")
-    public ApiResult<Map<String, Object>> workbench(HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
-        String role = (String) request.getAttribute("role");
-        List<Notice> notices = noticeMapper.selectList(new LambdaQueryWrapper<Notice>()
-                .orderByDesc(Notice::getId).last("limit 5"));
-        Map<String, Object> data = new HashMap<>();
-        data.put("systemName", "校园网络设备管理与故障报修系统");
-        data.put("campusInfo", "XX大学网络与信息中心");
         data.put("notices", notices);
         data.put("quickEntries", quickEntries(role));
         data.put("todo", todoSummary(userId, role));

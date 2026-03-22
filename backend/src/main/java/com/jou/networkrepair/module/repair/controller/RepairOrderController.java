@@ -6,7 +6,6 @@ import com.jou.networkrepair.common.constant.Loggable;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.module.log.entity.OperationLog;
 import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
-import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderActionDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAttachmentDTO;
@@ -126,6 +125,12 @@ public class RepairOrderController {
 
 
     @GetMapping("/{id}/recommend-maintainers")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO>> recommendMaintainers(@PathVariable Long id) {
+        return ApiResult.success(repairOrderService.recommendMaintainers(id));
+    }
+
+    @PutMapping("/{id}/assign")
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResult<List<com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO>> recommendMaintainers(@PathVariable Long id) {
         return ApiResult.success(repairOrderService.recommendMaintainers(id));

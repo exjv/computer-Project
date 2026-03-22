@@ -92,16 +92,6 @@
         <el-table-column prop="msg" label="错误信息"/>
       </el-table>
     </el-dialog>
-
-    <el-dialog v-model="assignRoleDialog" title="分配角色">
-      <el-form :model="assignRoleForm"><el-form-item label="角色"><el-select v-model="assignRoleForm.role"><el-option label="管理员" value="admin"/><el-option label="普通用户" value="user"/><el-option label="维修人员" value="maintainer"/></el-select></el-form-item></el-form>
-      <template #footer><el-button @click="assignRoleDialog=false">取消</el-button><el-button type="primary" @click="saveAssignRole">保存</el-button></template>
-    </el-dialog>
-
-    <el-dialog v-model="batchDialog" title="批量新增用户(JSON数组)">
-      <el-input type="textarea" v-model="batchText" :rows="10" placeholder='[{"employeeNo":"U001","username":"u001","realName":"张三","role":"user","phone":"13800138000","department":"运维"}]'/>
-      <template #footer><el-button @click="batchDialog=false">取消</el-button><el-button type="primary" @click="batchAdd">提交</el-button></template>
-    </el-dialog>
   </div>
 </template>
 

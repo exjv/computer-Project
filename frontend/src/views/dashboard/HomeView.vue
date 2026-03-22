@@ -182,6 +182,20 @@ const deleteNotice = async row => {
   await loadNotices()
 }
 
+const switchStatus = async row => {
+  const next = row.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
+  await putApi(`/notices/${row.id}/status`, { status: next })
+  ElMessage.success('公告状态已更新')
+  await loadNotices()
+}
+
+const deleteNotice = async row => {
+  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
+  await delApi(`/notices/${row.id}`)
+  ElMessage.success('公告已删除')
+  await loadNotices()
+}
+
 const todoItems = computed(() => Object.keys(workbench.todo || {}).map(key => ({ key, label: todoLabelMap[key] || key, value: workbench.todo[key] })))
 const statItems = computed(() => Object.keys(workbench.stats || {}).map(key => ({ key, label: statLabelMap[key] || key, value: workbench.stats[key] })))
 
