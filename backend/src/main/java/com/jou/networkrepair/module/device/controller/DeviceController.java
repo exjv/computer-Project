@@ -3,6 +3,7 @@ package com.jou.networkrepair.module.device.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
+import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
@@ -82,21 +83,21 @@ public class DeviceController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.DEVICE_MANAGE + "')")
     public ApiResult<Void> add(@RequestBody NetworkDevice entity) {
         entity.setCreateTime(LocalDateTime.now()); entity.setUpdateTime(LocalDateTime.now());
         deviceMapper.insert(entity); return ApiResult.success("新增成功", null);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.DEVICE_MANAGE + "')")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody NetworkDevice entity) {
         entity.setId(id); entity.setUpdateTime(LocalDateTime.now());
         deviceMapper.updateById(entity); return ApiResult.success("修改成功", null);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.DEVICE_MANAGE + "')")
     public ApiResult<Void> delete(@PathVariable Long id) {
         Long count = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>().eq(RepairOrder::getDeviceId, id));
         if (count != null && count > 0L) throw new BusinessException("存在关联报修记录，无法删除");

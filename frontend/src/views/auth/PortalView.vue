@@ -4,6 +4,12 @@
       <h1>{{ home.systemName }}</h1>
       <p>{{ home.systemDesc }}</p>
       <el-tag type="success">{{ home.campusInfo }}</el-tag>
+      <el-divider>适用场景</el-divider>
+      <el-row :gutter="12">
+        <el-col :span="12" v-for="(scene,idx) in home.scenes || []" :key="idx">
+          <el-card shadow="never" style="margin-bottom: 8px">{{ scene }}</el-card>
+        </el-col>
+      </el-row>
 
       <el-divider>角色入口</el-divider>
       <div class="roles">
@@ -31,7 +37,7 @@ import { useRouter } from 'vue-router'
 import { portalHomeApi } from '../../api'
 
 const router = useRouter()
-const home = reactive({ systemName: '', systemDesc: '', campusInfo: '', notices: [] })
+const home = reactive({ systemName: '', systemDesc: '', campusInfo: '', scenes: [], notices: [] })
 
 const toLogin = (role) => router.push({ path: '/login', query: { role } })
 

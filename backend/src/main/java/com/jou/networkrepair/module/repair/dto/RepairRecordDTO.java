@@ -20,4 +20,8 @@ public class RepairRecordDTO {
     private String resultDetail;
     @NotNull(message = "是否解决不能为空")
     private Integer isResolved;
+    private Integer usedParts;
+    private String usedPartsDesc;
+    private Integer laborHours;
+    private String repairConclusion;
 }

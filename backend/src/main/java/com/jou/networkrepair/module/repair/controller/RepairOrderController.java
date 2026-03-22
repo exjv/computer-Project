@@ -3,6 +3,7 @@ package com.jou.networkrepair.module.repair.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
+import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderActionDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
@@ -28,7 +29,7 @@ public class RepairOrderController {
     private final RepairOrderService repairOrderService;
 
     @GetMapping("/page")
-    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
     public ApiResult<Page<RepairOrder>> page(@RequestParam Long current, @RequestParam Long size,
                                              @RequestParam(required = false) String status,
                                              @RequestParam(required = false) String title,
@@ -54,7 +55,7 @@ public class RepairOrderController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('USER','ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_CREATE + "')")
     @Loggable(module = "工单管理", operationType = "新增", operationDesc = "提交报修工单")
     public ApiResult<Void> add(@RequestBody @Validated RepairOrderCreateDTO dto, HttpServletRequest request) {
         repairOrderService.create(dto, (Long) request.getAttribute("userId"));
@@ -62,7 +63,7 @@ public class RepairOrderController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_APPROVE + "')")
     @Loggable(module = "工单管理", operationType = "修改", operationDesc = "编辑工单")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody RepairOrder req) {
         repairOrderService.update(id, req);
@@ -70,7 +71,7 @@ public class RepairOrderController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
     @Loggable(module = "工单管理", operationType = "删除", operationDesc = "删除工单")
     public ApiResult<Void> delete(@PathVariable Long id) {
         repairOrderService.delete(id);
@@ -78,7 +79,7 @@ public class RepairOrderController {
     }
 
     @PutMapping("/{id}/assign")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
     @Loggable(module = "工单管理", operationType = "分配", operationDesc = "分配维修人员")
     public ApiResult<Void> assign(@PathVariable Long id, @RequestBody @Validated RepairOrderAssignDTO dto) {
         repairOrderService.assign(id, dto);
@@ -97,7 +98,7 @@ public class RepairOrderController {
     }
 
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_PROGRESS + "') || @permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
     @Loggable(module = "工单管理", operationType = "状态更新", operationDesc = "更新工单状态")
     public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody @Validated RepairOrderStatusDTO dto, HttpServletRequest request) {
         repairOrderService.updateStatus(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
@@ -110,7 +111,7 @@ public class RepairOrderController {
     }
 
     @PostMapping("/auto-dispatch")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
     @Loggable(module = "工单管理", operationType = "自动分配", operationDesc = "执行工单自动分配算法")
     public ApiResult<Map<String, Object>> autoDispatch() {
         List<DispatchResultVO> assignedList = repairOrderService.autoDispatch();

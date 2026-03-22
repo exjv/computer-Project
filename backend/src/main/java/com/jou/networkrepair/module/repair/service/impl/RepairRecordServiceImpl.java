@@ -11,6 +11,8 @@ import com.jou.networkrepair.module.repair.entity.RepairRecord;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairRecordMapper;
 import com.jou.networkrepair.module.repair.service.RepairRecordService;
+import com.jou.networkrepair.module.user.entity.SysUser;
+import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -24,6 +26,7 @@ public class RepairRecordServiceImpl implements RepairRecordService {
     private final RepairRecordMapper repairRecordMapper;
     private final RepairOrderMapper repairOrderMapper;
     private final DeviceMapper deviceMapper;
+    private final UserMapper userMapper;
 
     @Override
     public Page<RepairRecord> page(Long current, Long size, Long repairOrderId, Long deviceId, Long maintainerId, Integer isResolved, Long userId, String role) {
@@ -60,21 +63,36 @@ public class RepairRecordServiceImpl implements RepairRecordService {
 
     @Override
     public void create(RepairRecordDTO dto, Long userId, String role) {
+        RepairOrder order = repairOrderMapper.selectById(dto.getRepairOrderId());
+        if (order == null) throw new BusinessException("关联工单不存在");
+        NetworkDevice device = deviceMapper.selectById(dto.getDeviceId());
+        if (device == null) throw new BusinessException("关联设备不存在");
+
+        Long maintainerId = "maintainer".equals(role) ? userId : dto.getMaintainerId();
+        SysUser maintainer = userMapper.selectById(maintainerId);
+        if (maintainer == null) throw new BusinessException("维修人员不存在");
+
         RepairRecord record = new RepairRecord();
         record.setRepairOrderId(dto.getRepairOrderId());
+        record.setRepairOrderNo(order.getOrderNo());
         record.setDeviceId(dto.getDeviceId());
-        record.setMaintainerId("maintainer".equals(role) ? userId : dto.getMaintainerId());
+        record.setDeviceCode(device.getDeviceCode());
+        record.setMaintainerId(maintainerId);
+        record.setMaintainerEmployeeNo(maintainer.getEmployeeNo());
+        record.setMaintainerName(maintainer.getRealName());
         record.setFaultReason(dto.getFaultReason());
         record.setProcessDetail(dto.getProcessDetail());
         record.setResultDetail(dto.getResultDetail());
         record.setIsResolved(dto.getIsResolved());
+        record.setUsedParts(dto.getUsedParts());
+        record.setUsedPartsDesc(dto.getUsedPartsDesc());
+        record.setLaborHours(dto.getLaborHours());
+        record.setRepairConclusion(dto.getRepairConclusion());
         record.setRepairTime(LocalDateTime.now());
         record.setCreateTime(LocalDateTime.now());
         record.setUpdateTime(LocalDateTime.now());
         repairRecordMapper.insert(record);
 
-        RepairOrder order = repairOrderMapper.selectById(record.getRepairOrderId());
-        if (order == null) throw new BusinessException("关联工单不存在");
         if (record.getIsResolved() != null && record.getIsResolved() == 1) {
             order.setStatus("已完成");
             order.setFinishTime(LocalDateTime.now());
@@ -103,6 +121,10 @@ public class RepairRecordServiceImpl implements RepairRecordService {
         record.setProcessDetail(dto.getProcessDetail());
         record.setResultDetail(dto.getResultDetail());
         record.setIsResolved(dto.getIsResolved());
+        record.setUsedParts(dto.getUsedParts());
+        record.setUsedPartsDesc(dto.getUsedPartsDesc());
+        record.setLaborHours(dto.getLaborHours());
+        record.setRepairConclusion(dto.getRepairConclusion());
         record.setUpdateTime(LocalDateTime.now());
         repairRecordMapper.updateById(record);
     }
