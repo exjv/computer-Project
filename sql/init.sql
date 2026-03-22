@@ -308,14 +308,27 @@ INSERT INTO network_device
 (6,'DEV-006','认证服务器','服务器','Dell','R740','SN-006','主校区','数据中心','2021-12-10','2026-12-09','王工','数据中心','Dell/R740','10.0.9.10','00-11-22-33-44-06','数据中心','2021-12-09','停用',NULL,0,0,'',1,'备用服务器',NOW(),NOW());
 
 INSERT INTO repair_order
-(id, order_no, reporter_id, reporter_employee_no, reporter_name, contact_phone, reporter_department, report_location, device_id, device_code, device_name, device_type, title, fault_type, description, priority, affect_wide_area_network, report_time, status, progress, create_time, update_time)
-VALUES
-(1, 'RO202603220001', 2, 'U2026001', '张三', '13800000002', '教务处', '信息楼机房', 1, 'DEV-001', '核心交换机A', '交换机', '核心交换机端口告警', '链路异常', '端口丢包率较高', '高', 1, NOW(), '已提交', 5, NOW(), NOW());
+(id,order_no,device_id,reporter_id,title,description,priority,status,assign_maintainer_id,progress,report_time,audit_time,audit_by,assign_time,accept_time,start_repair_time,expected_finish_time,finish_time,confirm_time,satisfaction_score,feedback,close_reason,create_time,update_time) VALUES
+(1,'RO202406010001',2,2,'出口网络中断','校园网无法访问外网','高','待分配',NULL,30,NOW(),NOW(),1,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NOW(),NOW()),
+(2,'RO202406010002',4,3,'图书馆无线信号弱','三层区域频繁掉线','中','待接单',4,35,NOW(),NOW(),1,NOW(),NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NOW(),NOW()),
+(3,'RO202406010003',1,2,'核心交换机端口告警','端口丢包率高','高','维修中',5,70,NOW(),NOW(),1,NOW(),NOW(),NOW(),DATE_ADD(NOW(), INTERVAL 6 HOUR),NULL,NULL,NULL,NULL,NULL,NOW(),NOW()),
+(4,'RO202406010004',5,3,'教学楼网络延迟','课堂视频卡顿','中','已完成',4,100,NOW(),NOW(),1,NOW(),NOW(),NOW(),DATE_ADD(NOW(), INTERVAL 2 HOUR),NOW(),NOW(),5,'已恢复正常',NULL,NOW(),NOW()),
+(5,'RO202406010005',3,2,'防火墙策略异常','部分系统无法访问','低','审核驳回',NULL,0,NOW(),NOW(),1,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'信息不足，需补充日志截图',NOW(),NOW());
 
-INSERT INTO announcement (id, title, content, publisher_id, status, sort_no, create_time, update_time) VALUES
-(1, '系统初始化公告', '数据库模型已升级为业务流程版。', 1, 'PUBLISHED', 1, NOW(), NOW());
+INSERT INTO repair_order_flow (repair_order_id,from_status,to_status,action,operator_id,operator_role,remark,create_time) VALUES
+(1,NULL,'已提交/待审核','SUBMIT',2,'user','用户提交工单',NOW()),
+(1,'已提交/待审核','审核通过','ADMIN_APPROVE',1,'admin','审核通过',NOW()),
+(1,'审核通过','待分配','ADMIN_TO_ASSIGN',1,'admin','进入待分配',NOW()),
+(2,NULL,'已提交/待审核','SUBMIT',3,'user','用户提交工单',NOW()),
+(2,'已提交/待审核','审核通过','ADMIN_APPROVE',1,'admin','审核通过',NOW()),
+(2,'审核通过','待分配','ADMIN_TO_ASSIGN',1,'admin','进入待分配',NOW()),
+(2,'待分配','待接单','ADMIN_ASSIGN',1,'admin','分配给王工',NOW());
 
-INSERT INTO dictionary (dict_type, dict_code, dict_label, dict_value, sort_no, status, create_time, update_time) VALUES
-('REPAIR_PRIORITY', 'LOW', '低', 'LOW', 1, 'ENABLED', NOW(), NOW()),
-('REPAIR_PRIORITY', 'MEDIUM', '中', 'MEDIUM', 2, 'ENABLED', NOW(), NOW()),
-('REPAIR_PRIORITY', '高', '高', '高', 3, 'ENABLED', NOW(), NOW());
+INSERT INTO repair_record VALUES
+(1,4,5,4,'交换机端口老化','更换上联模块并重启设备','延迟恢复正常',1,NOW(),NOW(),NOW()),
+(2,5,3,5,'策略冲突','梳理ACL并调整策略顺序','业务访问恢复',1,NOW(),NOW(),NOW()),
+(3,3,1,5,'光模块松动','重新插拔并清洁光纤接口','当前稳定观察中',0,NOW(),NOW(),NOW());
+
+INSERT INTO notice VALUES
+(1,'校园网设备巡检通知','本周六进行核心网络设备巡检，期间部分区域网络可能短时波动。',1,NOW(),NOW()),
+(2,'报修系统升级完成','校园网络报修系统已升级，支持在线查看维修进度。',1,NOW(),NOW());

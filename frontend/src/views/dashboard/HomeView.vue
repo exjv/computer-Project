@@ -182,6 +182,33 @@ const deleteNotice = async row => {
   await loadNotices()
 }
 
+const editNotice = row => {
+  Object.assign(noticeForm, { ...row })
+  editDialog.value = true
+}
+
+const saveNotice = async () => {
+  if (noticeForm.id) await putApi(`/notices/${noticeForm.id}`, noticeForm)
+  else await postApi('/notices', noticeForm)
+  ElMessage.success('公告保存成功')
+  editDialog.value = false
+  await loadNotices()
+}
+
+const switchStatus = async row => {
+  const next = row.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
+  await putApi(`/notices/${row.id}/status`, { status: next })
+  ElMessage.success('公告状态已更新')
+  await loadNotices()
+}
+
+const deleteNotice = async row => {
+  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
+  await delApi(`/notices/${row.id}`)
+  ElMessage.success('公告已删除')
+  await loadNotices()
+}
+
 const deleteNotice = async row => {
   await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
   await delApi(`/notices/${row.id}`)
