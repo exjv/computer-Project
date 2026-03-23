@@ -6,8 +6,12 @@ import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAttachmentDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderAuditDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderCloseDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderDelayApproveDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderFeedbackDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
@@ -129,6 +133,34 @@ public class RepairOrderController {
     public ApiResult<Void> assign(@PathVariable Long id, @RequestBody @Validated RepairOrderAssignDTO dto, HttpServletRequest request) {
         repairOrderService.assign(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("分配成功", null);
+    }
+
+    @PutMapping("/{id}/audit")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<Void> audit(@PathVariable Long id, @RequestBody @Validated RepairOrderAuditDTO dto, HttpServletRequest request) {
+        repairOrderService.auditByAdmin(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("审核处理成功", null);
+    }
+
+    @PutMapping("/{id}/reassign")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<Void> reassign(@PathVariable Long id, @RequestBody @Validated RepairOrderReassignDTO dto, HttpServletRequest request) {
+        repairOrderService.reassignByAdmin(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("改派成功", null);
+    }
+
+    @PutMapping("/{id}/delay-approve")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<Void> approveDelay(@PathVariable Long id, @RequestBody @Validated RepairOrderDelayApproveDTO dto, HttpServletRequest request) {
+        repairOrderService.approveDelayByAdmin(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("延期审批完成", null);
+    }
+
+    @PutMapping("/{id}/close")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<Void> close(@PathVariable Long id, @RequestBody @Validated RepairOrderCloseDTO dto, HttpServletRequest request) {
+        repairOrderService.closeByAdmin(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("工单关闭成功", null);
     }
 
     @PutMapping("/{id}/status")

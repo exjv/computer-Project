@@ -6,8 +6,12 @@ import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderAuditDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderCloseDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderDelayApproveDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderFeedbackDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
@@ -187,6 +191,9 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     public void assign(Long id, RepairOrderAssignDTO dto, Long userId, String role) {
         if (!"admin".equals(role)) throw new BusinessException("仅管理员可分配");
         RepairOrder order = requireOrder(id);
+        if (!RepairOrderStatusEnum.PENDING_ASSIGN.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("未审核通过进入待分配前，不能执行分配");
+        }
         SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
         if (maintainer == null) throw new BusinessException("维修人员不存在");
 
@@ -208,12 +215,143 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void auditByAdmin(Long id, RepairOrderAuditDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可审核");
+        RepairOrder order = requireOrder(id);
+        if (!RepairOrderStatusEnum.SUBMITTED.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("当前工单不在待审核状态");
+        }
+        String from = order.getStatus();
+        LocalDateTime now = LocalDateTime.now();
+        SysUser admin = userMapper.selectById(userId);
+        order.setAuditBy(userId);
+        order.setAuditTime(now);
+        if (admin != null) {
+            order.setAuditByEmployeeNo(admin.getEmployeeNo());
+            order.setAuditByName(admin.getRealName());
+        }
+        if (Boolean.TRUE.equals(dto.getApproved())) {
+            order.setStatus(RepairOrderStatusEnum.PENDING_ASSIGN.getLabel());
+            order.setProgress(Math.max(defaultZero(order.getProgress()), 20));
+            String remark = dto.getRemark() == null ? "管理员审核通过，进入待分配" : dto.getRemark();
+            order.setRemark(remark);
+            order.setUpdateBy(userId);
+            order.setUpdateTime(now);
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), from, order.getStatus(), "ADMIN_APPROVE", userId, role, remark);
+            addBusinessLog(order, "ADMIN_APPROVE", userId, role, from, order.getStatus(), remark);
+        } else {
+            order.setStatus(RepairOrderStatusEnum.AUDIT_REJECTED.getLabel());
+            order.setProgress(0);
+            String remark = dto.getRemark() == null ? "管理员审核驳回" : dto.getRemark();
+            order.setRemark(remark);
+            order.setUpdateBy(userId);
+            order.setUpdateTime(now);
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), from, order.getStatus(), "ADMIN_REJECT", userId, role, remark);
+            addBusinessLog(order, "ADMIN_REJECT", userId, role, from, order.getStatus(), remark);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reassignByAdmin(Long id, RepairOrderReassignDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可改派");
+        RepairOrder order = requireOrder(id);
+        if (order.getAssignMaintainerId() == null) throw new BusinessException("工单尚未分配，不能改派");
+        if (RepairOrderStatusEnum.terminalStatuses().contains(order.getStatus())) {
+            throw new BusinessException("终态工单不允许改派");
+        }
+        SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
+        if (maintainer == null) throw new BusinessException("维修人员不存在");
+        String from = order.getStatus();
+        order.setAssignMaintainerId(maintainer.getId());
+        order.setAssignMaintainerEmployeeNo(maintainer.getEmployeeNo());
+        order.setAssignMaintainerName(maintainer.getRealName());
+        order.setAssignBy(userId);
+        order.setAssignTime(LocalDateTime.now());
+        order.setStatus(RepairOrderStatusEnum.PENDING_ACCEPT.getLabel());
+        order.setAcceptTime(null);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        String remark = dto.getRemark() == null ? "管理员改派维修人员：" + maintainer.getRealName() : dto.getRemark();
+        addFlow(order.getId(), from, order.getStatus(), "ADMIN_REASSIGN", userId, role, remark);
+        addBusinessLog(order, "ADMIN_REASSIGN", userId, role, from, order.getStatus(), remark);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void approveDelayByAdmin(Long id, RepairOrderDelayApproveDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可审批延期");
+        RepairOrder order = requireOrder(id);
+        if (!RepairOrderStatusEnum.DELAY_APPLYING.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("仅申请延期中的工单可审批");
+        }
+        String from = order.getStatus();
+        if (Boolean.TRUE.equals(dto.getApproved())) {
+            order.setStatus(RepairOrderStatusEnum.DELAY_APPROVED.getLabel());
+            if (dto.getDelayedExpectedFinishTime() != null) {
+                order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+                order.setExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+            }
+            String remark = dto.getRemark() == null ? "管理员审批延期通过" : dto.getRemark();
+            order.setRemark(remark);
+            order.setUpdateBy(userId);
+            order.setUpdateTime(LocalDateTime.now());
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), from, order.getStatus(), "ADMIN_DELAY_APPROVE", userId, role, remark);
+            addBusinessLog(order, "ADMIN_DELAY_APPROVE", userId, role, from, order.getStatus(), remark);
+        } else {
+            order.setStatus(RepairOrderStatusEnum.IN_PROGRESS.getLabel());
+            String remark = dto.getRemark() == null ? "管理员审批延期驳回，退回维修中" : dto.getRemark();
+            order.setRemark(remark);
+            order.setUpdateBy(userId);
+            order.setUpdateTime(LocalDateTime.now());
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), from, order.getStatus(), "ADMIN_DELAY_REJECT", userId, role, remark);
+            addBusinessLog(order, "ADMIN_DELAY_REJECT", userId, role, from, order.getStatus(), remark);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void closeByAdmin(Long id, RepairOrderCloseDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可关闭");
+        RepairOrder order = requireOrder(id);
+        if (RepairOrderStatusEnum.terminalStatuses().contains(order.getStatus())) {
+            throw new BusinessException("终态工单不能重复关闭");
+        }
+        if (Boolean.TRUE.equals(dto.getForceClose())) {
+            if (dto.getCloseReason() == null || dto.getCloseReason().trim().isEmpty()) {
+                throw new BusinessException("强制关闭必须填写原因");
+            }
+        } else {
+            if (!RepairOrderStatusEnum.COMPLETED.getLabel().equals(order.getStatus())
+                    || !"已解决".equals(order.getUserConfirmResult())) {
+                throw new BusinessException("用户未确认前不能直接关闭");
+            }
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.CLOSED.getLabel());
+        order.setCloseReason(dto.getCloseReason());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        String op = Boolean.TRUE.equals(dto.getForceClose()) ? "ADMIN_FORCE_CLOSE" : "ADMIN_CLOSE";
+        addFlow(order.getId(), from, order.getStatus(), op, userId, role, dto.getCloseReason());
+        addBusinessLog(order, op, userId, role, from, order.getStatus(), dto.getCloseReason());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
         if (!RepairOrderStatusEnum.containsLabel(dto.getStatus())) {
             throw new BusinessException("不支持的工单状态");
         }
         RepairOrder order = requireOrder(id);
         ensureScope(order, userId, role);
+        assertTransitionAllowed(order, dto.getStatus(), role);
 
         LocalDateTime now = LocalDateTime.now();
         String from = order.getStatus();
@@ -244,6 +382,11 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         }
         if (RepairOrderStatusEnum.ACCEPTED.getLabel().equals(dto.getStatus())) order.setAcceptTime(now);
         if (RepairOrderStatusEnum.IN_PROGRESS.getLabel().equals(dto.getStatus())) order.setStartRepairTime(now);
+        if (RepairOrderStatusEnum.PENDING_CONFIRM.getLabel().equals(dto.getStatus())) {
+            if (order.getProgress() == null || order.getProgress() < 100) {
+                throw new BusinessException("维修未完成不能进入待验收");
+            }
+        }
         if (RepairOrderStatusEnum.COMPLETED.getLabel().equals(dto.getStatus()) || RepairOrderStatusEnum.CLOSED.getLabel().equals(dto.getStatus())) {
             order.setFinishTime(now);
             if (order.getProgress() == null || order.getProgress() < 100) order.setProgress(100);
@@ -439,5 +582,38 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         if ("user".equals(role)) qw.eq(RepairOrder::getReporterId, userId);
         if ("maintainer".equals(role)) qw.eq(RepairOrder::getAssignMaintainerId, userId);
         return qw;
+    }
+
+    private void assertTransitionAllowed(RepairOrder order, String toStatus, String role) {
+        String from = order.getStatus();
+        if (from == null || from.equals(toStatus)) return;
+        if (RepairOrderStatusEnum.terminalStatuses().contains(from)) {
+            throw new BusinessException("终态工单不允许再流转");
+        }
+        if (RepairOrderStatusEnum.PENDING_ACCEPT.getLabel().equals(toStatus)
+                && !RepairOrderStatusEnum.PENDING_ASSIGN.getLabel().equals(from)) {
+            throw new BusinessException("未审核并进入待分配，不能分配到待接单");
+        }
+        if (RepairOrderStatusEnum.ACCEPTED.getLabel().equals(toStatus)
+                && !RepairOrderStatusEnum.PENDING_ACCEPT.getLabel().equals(from)) {
+            throw new BusinessException("未分配不能接单");
+        }
+        if (RepairOrderStatusEnum.IN_PROGRESS.getLabel().equals(toStatus)
+                && !(RepairOrderStatusEnum.ACCEPTED.getLabel().equals(from)
+                || RepairOrderStatusEnum.DELAY_APPLYING.getLabel().equals(from)
+                || RepairOrderStatusEnum.DELAY_APPROVED.getLabel().equals(from)
+                || "待验收/待确认".equals(from))) {
+            throw new BusinessException("未接单不能开始维修");
+        }
+        if (RepairOrderStatusEnum.PENDING_CONFIRM.getLabel().equals(toStatus)
+                && !(RepairOrderStatusEnum.IN_PROGRESS.getLabel().equals(from)
+                || RepairOrderStatusEnum.DELAY_APPROVED.getLabel().equals(from))) {
+            throw new BusinessException("维修未完成不能进入待验收");
+        }
+        if (RepairOrderStatusEnum.CLOSED.getLabel().equals(toStatus)
+                && !"admin".equals(role)
+                && !RepairOrderStatusEnum.COMPLETED.getLabel().equals(from)) {
+            throw new BusinessException("仅管理员可关闭，且需满足业务条件");
+        }
     }
 }

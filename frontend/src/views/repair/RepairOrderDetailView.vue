@@ -154,6 +154,9 @@ const actionButtons = computed(() => {
   const buttons = []
   if (isAdmin.value && status === '已提交/待审核') buttons.push({ label: '审核通过', status: '审核通过', type: 'success' })
   if (isAdmin.value && status === '已提交/待审核') buttons.push({ label: '审核驳回', status: '审核驳回', type: 'danger' })
+  if (isAdmin.value && status === '待分配') buttons.push({ label: '分配工单', status: 'ADMIN_ASSIGN', type: 'primary' })
+  if (isAdmin.value && ['待接单', '维修人员已接单', '维修中'].includes(status)) buttons.push({ label: '改派工单', status: 'ADMIN_REASSIGN', type: 'warning' })
+  if (isAdmin.value && status === '申请延期中') buttons.push({ label: '审批延期', status: 'ADMIN_DELAY_APPROVE', type: 'warning' })
   if (isMaintainer.value && status === '待接单') buttons.push({ label: '接单', status: '维修人员已接单' })
   if (isMaintainer.value && status === '维修人员已接单') buttons.push({ label: '开始维修', status: '维修中' })
   if (isMaintainer.value && ['维修中', '延期已批准'].includes(status)) buttons.push({ label: '提交完工', status: '已完成', type: 'success' })
@@ -192,10 +195,34 @@ const loadAll = async () => {
 }
 
 const quickUpdate = async (btn) => {
+  if (btn.status === 'ADMIN_ASSIGN' || btn.status === 'ADMIN_REASSIGN') {
+    const { value } = await ElMessageBox.prompt('请输入维修人员ID', btn.status === 'ADMIN_ASSIGN' ? '分配工单' : '改派工单')
+    if (!value) return
+    if (btn.status === 'ADMIN_ASSIGN') await putApi(`/repair-orders/${id}/assign`, { assignMaintainerId: Number(value) })
+    else await putApi(`/repair-orders/${id}/reassign`, { assignMaintainerId: Number(value), remark: '管理员改派' })
+    ElMessage.success('操作成功')
+    await loadAll()
+    return
+  }
+  if (btn.status === '审核通过' || btn.status === '审核驳回') {
+    await putApi(`/repair-orders/${id}/audit`, { approved: btn.status === '审核通过', remark: btn.status })
+    ElMessage.success('审核成功')
+    await loadAll()
+    return
+  }
+  if (btn.status === 'ADMIN_DELAY_APPROVE') {
+    await putApi(`/repair-orders/${id}/delay-approve`, { approved: true, remark: '管理员审批延期通过' })
+    ElMessage.success('延期审批成功')
+    await loadAll()
+    return
+  }
   const payload = { status: btn.status }
   if (btn.status === '已关闭') {
     const { value } = await ElMessageBox.prompt('请输入关闭原因', '关闭工单')
-    payload.closeReason = value
+    await putApi(`/repair-orders/${id}/close`, { forceClose: true, closeReason: value || '管理员强制关闭' })
+    ElMessage.success('关闭成功')
+    await loadAll()
+    return
   }
   if (btn.status === '已完成' && isUser.value) {
     const { value } = await ElMessageBox.prompt('请输入用户反馈内容（可选）', '反馈')
