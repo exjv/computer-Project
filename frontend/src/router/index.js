@@ -25,7 +25,8 @@ router.beforeEach(async (to) => {
   if (to.path === '/login' || to.path === '/portal') return true
   if (!store.token) return '/portal'
   if (!store.userInfo.role) await store.fetchUserInfo()
-  const targetRoles = to.meta.roles || []
+  const dynamicMap = store.routeRoleMap || ROUTE_ROLE_MAP
+  const targetRoles = to.meta.roles || dynamicMap[to.path] || []
   if (targetRoles.length && !store.hasAnyRole(targetRoles)) return '/'
   return true
 })

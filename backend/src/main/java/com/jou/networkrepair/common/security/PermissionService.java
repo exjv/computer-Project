@@ -90,13 +90,16 @@ public class PermissionService {
         Map<String, Set<String>> map = new HashMap<>();
         map.put("admin", new HashSet<>(Arrays.asList(
                 PermissionCode.USER_MANAGE,
+                PermissionCode.USER_QUERY_BY_EMPLOYEE_NO,
                 PermissionCode.ROLE_MANAGE,
                 PermissionCode.DEVICE_MANAGE,
+                PermissionCode.DEVICE_VIEW,
                 PermissionCode.REPAIR_ORDER_APPROVE,
                 PermissionCode.REPAIR_ORDER_ASSIGN,
                 PermissionCode.REPAIR_ORDER_VIEW_ALL,
-                PermissionCode.REPAIR_ORDER_CREATE,
+                PermissionCode.REPAIR_RECORD_VIEW,
                 PermissionCode.NOTICE_PUBLISH,
+                PermissionCode.NOTICE_VIEW,
                 PermissionCode.STATISTICS_VIEW,
                 PermissionCode.REPORT_EXPORT,
                 PermissionCode.LOG_OPERATION_VIEW,
@@ -105,22 +108,28 @@ public class PermissionService {
         )));
 
         map.put("maintainer", new HashSet<>(Arrays.asList(
+                PermissionCode.DEVICE_VIEW,
                 PermissionCode.REPAIR_ORDER_VIEW_SELF,
                 PermissionCode.REPAIR_ORDER_ACCEPT,
                 PermissionCode.REPAIR_ORDER_REJECT,
                 PermissionCode.REPAIR_ORDER_PROGRESS,
+                PermissionCode.REPAIR_RECORD_VIEW,
                 PermissionCode.REPAIR_RECORD_WRITE,
                 PermissionCode.REPAIR_ATTACHMENT_UPLOAD,
                 PermissionCode.REPAIR_EXPECT_FINISH,
                 PermissionCode.REPAIR_DELAY_APPLY,
                 PermissionCode.REPAIR_PARTS_APPLY,
-                PermissionCode.REPAIR_FEEDBACK_CONFIRM
+                PermissionCode.NOTICE_VIEW
         )));
 
         map.put("user", new HashSet<>(Arrays.asList(
+                PermissionCode.DEVICE_VIEW,
                 PermissionCode.REPAIR_ORDER_CREATE,
                 PermissionCode.REPAIR_ORDER_VIEW_SELF,
-                PermissionCode.REPAIR_FEEDBACK_CONFIRM
+                PermissionCode.REPAIR_RECORD_VIEW,
+                PermissionCode.REPAIR_PROGRESS_TRACK,
+                PermissionCode.REPAIR_FEEDBACK_CONFIRM,
+                PermissionCode.NOTICE_VIEW
         )));
         return map;
     }

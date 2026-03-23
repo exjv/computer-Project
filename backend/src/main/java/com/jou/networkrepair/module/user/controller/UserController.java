@@ -43,6 +43,23 @@ public class UserController {
     private final UserRoleMapper userRoleMapper;
     private final ThirdPartyBindMapper thirdPartyBindMapper;
 
+
+    @GetMapping("/check-employee-no")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.USER_QUERY_BY_EMPLOYEE_NO + "')")
+    public ApiResult<Boolean> checkEmployeeNo(@RequestParam String employeeNo,
+                                              @RequestParam(required = false) Long excludeId) {
+        Long cnt = userMapper.countByEmployeeNo(employeeNo, excludeId);
+        return ApiResult.success(cnt == null || cnt == 0);
+    }
+
+    @GetMapping("/by-employee-no/{employeeNo}")
+    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.USER_QUERY_BY_EMPLOYEE_NO + "')")
+    public ApiResult<SysUser> getByEmployeeNo(@PathVariable String employeeNo) {
+        SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmployeeNo, employeeNo));
+        if (user == null) throw new BusinessException("用户不存在");
+        return ApiResult.success(user);
+    }
+
     @GetMapping("/roles")
     public ApiResult<List<Role>> roleList() {
         return ApiResult.success(roleMapper.selectList(new LambdaQueryWrapper<Role>().eq(Role::getStatus, 1).orderByAsc(Role::getId)));

@@ -2,25 +2,24 @@ package com.jou.networkrepair.module.auth.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.common.api.ApiResult;
-import com.jou.networkrepair.common.security.RbacPermissionService;
 import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.common.security.PermissionService;
+import com.jou.networkrepair.common.security.RbacPermissionService;
 import com.jou.networkrepair.common.utils.JwtUtil;
 import com.jou.networkrepair.module.auth.dto.LoginDTO;
 import com.jou.networkrepair.module.auth.dto.UpdatePasswordDTO;
 import com.jou.networkrepair.module.auth.service.CaptchaService;
 import com.jou.networkrepair.module.auth.vo.LoginVO;
 import com.jou.networkrepair.module.log.entity.LoginLog;
-import com.jou.networkrepair.module.log.entity.OperationLog;
 import com.jou.networkrepair.module.log.mapper.LoginLogMapper;
+import com.jou.networkrepair.module.user.entity.SysUser;
+import com.jou.networkrepair.module.user.mapper.UserMapper;
 import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
 import com.jou.networkrepair.module.v2.auth2.mapper.ThirdPartyBindMapper;
 import com.jou.networkrepair.module.v2.rbac.entity.Role;
 import com.jou.networkrepair.module.v2.rbac.entity.UserRole;
 import com.jou.networkrepair.module.v2.rbac.mapper.RoleMapper;
 import com.jou.networkrepair.module.v2.rbac.mapper.UserRoleMapper;
-import com.jou.networkrepair.module.user.entity.SysUser;
-import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
@@ -28,29 +27,25 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
     private static final Pattern PASSWORD_STRENGTH = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d).{8,}$");
+
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final LoginLogMapper loginLogMapper;
-    private final OperationLogMapper operationLogMapper;
     private final CaptchaService captchaService;
     private final UserRoleMapper userRoleMapper;
     private final RoleMapper roleMapper;
     private final RbacPermissionService rbacPermissionService;
+    private final PermissionService permissionService;
     private final ThirdPartyBindMapper thirdPartyBindMapper;
 
     @GetMapping("/captcha")
@@ -68,26 +63,43 @@ public class AuthController {
             saveLoginLog(null, dto.getAccount(), "FAIL_CAPTCHA", "验证码错误或已失效", request);
             throw new BusinessException("验证码错误或已失效");
         }
-        SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
-                .and(w -> w.eq(SysUser::getUsername, dto.getAccount()).or().eq(SysUser::getEmployeeNo, dto.getAccount())));
+
+        SysUser user = userMapper.findByAccount(dto.getAccount());
         if (user == null) {
             saveLoginLog(null, dto.getAccount(), "FAIL_ACCOUNT", "账号不存在", request);
             throw new BusinessException("账号不存在");
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            saveLoginLog(user.getId(), user.getUsername(), "FAIL_DISABLED", "账号已禁用", request);
+            throw new BusinessException("账号已禁用");
         }
         if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
             saveLoginLog(user.getId(), user.getUsername(), "FAIL_PASSWORD", "密码错误", request);
             throw new BusinessException("密码错误");
         }
+
         List<String> roleCodes = queryRoleCodes(user);
         String selectedRole = rbacPermissionService.normalizeRole(dto.getRole());
         if (!roleCodes.contains(selectedRole)) {
-            saveLoginLog(user.getId(), user.getUsername(), "FAIL_ROLE", request.getRemoteAddr());
+            saveLoginLog(user.getId(), user.getUsername(), "FAIL_ROLE", "角色不匹配", request);
             throw new BusinessException("角色选择错误或无权限使用该入口");
         }
+
+        Set<String> permissions = permissionService.getPermissionSet(user.getId(), selectedRole);
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), selectedRole, roleCodes);
+
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
-        saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", request.getRemoteAddr());
-        return ApiResult.success(new LoginVO(jwtUtil.generateToken(user.getId(), user.getUsername(), selectedRole, roleCodes), selectedRole, user.getUsername()));
+        saveLoginLog(user.getId(), user.getUsername(), "SUCCESS", null, request);
+
+        return ApiResult.success(new LoginVO(
+                token,
+                selectedRole,
+                user.getUsername(),
+                user.getEmployeeNo(),
+                new HashSet<>(roleCodes),
+                permissions
+        ));
     }
 
     @GetMapping("/oauth/{provider}/url")
@@ -103,18 +115,31 @@ public class AuthController {
     @GetMapping("/userInfo")
     public ApiResult<Map<String, Object>> userInfo(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
+        String activeRole = String.valueOf(request.getAttribute("role"));
         SysUser user = userMapper.selectById(userId);
+        if (user == null) throw new BusinessException("用户不存在");
+
         List<String> roleCodes = queryRoleCodes(user);
-        Set<String> permissions = rbacPermissionService.permissionsByRoles(roleCodes);
+        Set<String> permissions = permissionService.getPermissionSet(userId, activeRole);
+
         List<ThirdPartyBind> binds = thirdPartyBindMapper.selectList(new LambdaQueryWrapper<ThirdPartyBind>()
                 .eq(ThirdPartyBind::getUserId, userId)
                 .eq(ThirdPartyBind::getStatus, 1));
+
         Map<String, Object> map = new HashMap<>();
-        map.put("id", user.getId()); map.put("username", user.getUsername()); map.put("realName", user.getRealName());
-        map.put("phone", user.getPhone()); map.put("email", user.getEmail());
-        map.put("role", request.getAttribute("role"));
+        map.put("id", user.getId());
+        map.put("username", user.getUsername());
+        map.put("employeeNo", user.getEmployeeNo());
+        map.put("realName", user.getRealName());
+        map.put("phone", user.getPhone());
+        map.put("email", user.getEmail());
+        map.put("department", user.getDepartment());
+        map.put("role", activeRole);
         map.put("roles", roleCodes);
         map.put("permissions", permissions);
+        map.put("routeRoleMap", rbacPermissionService.routeRoleMap());
+        map.put("menuPermissions", permissions);
+        map.put("buttonPermissions", permissions);
         map.put("thirdPartyBinds", binds.stream().map(ThirdPartyBind::getPlatform).collect(Collectors.toList()));
         return ApiResult.success(map);
     }
@@ -124,12 +149,12 @@ public class AuthController {
         Long userId = (Long) request.getAttribute("userId");
         String ip = request.getRemoteAddr();
         if (userId == null) {
-            saveLoginLog(null, "UNKNOWN", "FAIL_PWD_ILLEGAL_USER", ip);
+            saveLoginLog(null, "UNKNOWN", "FAIL_PWD_ILLEGAL_USER", "非法请求", request);
             throw new BusinessException("非法请求，请重新登录后再试");
         }
         SysUser user = userMapper.selectById(userId);
         if (user == null) {
-            saveLoginLog(userId, "UNKNOWN", "FAIL_PWD_USER_NOT_FOUND", ip);
+            saveLoginLog(userId, "UNKNOWN", "FAIL_PWD_USER_NOT_FOUND", "用户不存在", request);
             throw new BusinessException("用户不存在，无法修改密码");
         }
 
@@ -140,38 +165,38 @@ public class AuthController {
         String captchaCode = body.get("captchaCode");
 
         if (isBlank(oldPassword) || isBlank(newPassword) || isBlank(confirmPassword)) {
-            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_PARAM_EMPTY", ip);
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_PARAM_EMPTY", ip, request);
             throw new BusinessException("旧密码、新密码、确认密码均不能为空");
         }
         if (isBlank(captchaKey) || isBlank(captchaCode)) {
-            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CAPTCHA_EMPTY", ip);
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CAPTCHA_EMPTY", ip, request);
             throw new BusinessException("验证码不能为空");
         }
         if (!captchaService.verify(captchaKey, captchaCode)) {
-            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CAPTCHA", ip);
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CAPTCHA", ip, request);
             throw new BusinessException("验证码错误或已失效");
         }
         if (!newPassword.equals(confirmPassword)) {
-            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CONFIRM", ip);
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CONFIRM", ip, request);
             throw new BusinessException("两次输入的新密码不一致");
         }
         if (!PASSWORD_STRENGTH.matcher(newPassword).matches()) {
-            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_WEAK", ip);
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_WEAK", ip, request);
             throw new BusinessException("密码强度不足：至少8位且包含字母和数字");
         }
         if (oldPassword.equals(newPassword)) {
-            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_SAME", ip);
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_SAME", ip, request);
             throw new BusinessException("新旧密码不能一致");
         }
         if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
-            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_OLD", ip);
+            saveLoginLog(userId, user.getUsername(), "FAIL_PWD_OLD", ip, request);
             throw new BusinessException("旧密码错误");
         }
 
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
-        saveLoginLog(userId, user.getUsername(), "SUCCESS_PWD_UPDATE", ip);
+        saveLoginLog(userId, user.getUsername(), "SUCCESS_PWD_UPDATE", ip, request);
         return ApiResult.success("密码修改成功", null);
     }
 
@@ -179,13 +204,17 @@ public class AuthController {
     public ApiResult<Void> updateProfile(@RequestBody SysUser req, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         SysUser user = userMapper.selectById(userId);
-        user.setRealName(req.getRealName()); user.setPhone(req.getPhone()); user.setEmail(req.getEmail());
+        user.setRealName(req.getRealName());
+        user.setPhone(req.getPhone());
+        user.setEmail(req.getEmail());
         userMapper.updateById(user);
         return ApiResult.success("修改成功", null);
     }
 
     @PostMapping("/logout")
-    public ApiResult<Void> logout() { return ApiResult.success("退出成功", null); }
+    public ApiResult<Void> logout() {
+        return ApiResult.success("退出成功", null);
+    }
 
     private void saveLoginLog(Long userId, String username, String loginStatus, String failReason, HttpServletRequest request) {
         LoginLog log = new LoginLog();

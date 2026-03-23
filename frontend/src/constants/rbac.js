@@ -6,18 +6,18 @@ export const ROLE = {
 
 export const PERMISSIONS = {
   ADMIN: [
-    'dashboard:view','users:manage','devices:manage','repair:all:view','repair:audit','repair:reject',
-    'repair:assign','repair:reassign','repair:delay:approve','repair:close','repair:stats','repair:export',
-    'repair:record:view','repair:record:manage','log:view','notice:publish','notice:manage','report:export'
+    'user:manage', 'user:query:employee-no', 'role:manage', 'device:manage', 'device:view',
+    'repair:order:approve', 'repair:order:assign', 'repair:order:view:all', 'repair:record:view', 'repair:supervise',
+    'notice:publish', 'notice:view', 'statistics:view', 'report:export', 'log:operation:view', 'log:business:view'
   ],
   MAINTAINER: [
-    'dashboard:view','devices:view','repair:assigned:view','repair:accept','repair:reject:receive',
-    'repair:start','repair:progress:update','repair:photo:upload','repair:delay:apply',
-    'repair:parts:apply','repair:finish','repair:record:view','repair:record:manage','notice:view'
+    'device:view', 'repair:order:view:self', 'repair:order:accept', 'repair:order:reject',
+    'repair:order:progress', 'repair:record:view', 'repair:record:write', 'repair:attachment:upload',
+    'repair:expected-finish:update', 'repair:delay:apply', 'repair:parts:apply', 'notice:view'
   ],
   USER: [
-    'dashboard:view','repair:create','repair:cancel','repair:my:view','repair:progress:view',
-    'repair:confirm','repair:feedback','devices:view','notice:view'
+    'device:view', 'repair:order:create', 'repair:order:view:self', 'repair:record:view',
+    'repair:progress:track', 'repair:feedback:confirm', 'notice:view'
   ]
 }
 
@@ -32,11 +32,11 @@ export const ROUTE_ROLE_MAP = {
 }
 
 export const MENU_CONFIG = [
-  { path: '/', label: '首页', perm: 'dashboard:view' },
-  { path: '/users', label: '用户管理', perm: 'users:manage' },
-  { path: '/devices', label: '设备管理', anyPerm: ['devices:manage', 'devices:view'] },
-  { path: '/repair-orders', label: '报修工单', anyPerm: ['repair:all:view', 'repair:assigned:view', 'repair:my:view'] },
-  { path: '/repair-records', label: '维修记录', perm: 'repair:record:view' },
-  { path: '/logs', label: '日志管理', perm: 'log:view' },
+  { path: '/', label: '首页', anyPerm: ['statistics:view', 'repair:order:view:self', 'repair:order:view:all'] },
+  { path: '/users', label: '用户管理', perm: 'user:manage' },
+  { path: '/devices', label: '设备管理', anyPerm: ['device:manage', 'device:view'] },
+  { path: '/repair-orders', label: '报修工单', anyPerm: ['repair:order:view:all', 'repair:order:view:self', 'repair:order:create'] },
+  { path: '/repair-records', label: '维修记录', anyPerm: ['repair:record:view', 'repair:record:write'] },
+  { path: '/logs', label: '日志管理', anyPerm: ['log:operation:view', 'log:business:view'] },
   { path: '/profile', label: '个人中心' }
 ]
