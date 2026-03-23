@@ -21,6 +21,8 @@
 
 ## 运行步骤
 1. 创建数据库并导入：`sql/init.sql`
+   - 若执行第 2 步数据库重构，请追加执行：`sql/migration/20260323_step26_refactor_models.sql`
+   - 精简演示数据：`sql/demo_seed_step26.sql`
 2. 修改 `backend/src/main/resources/application.yml` 数据库配置
 3. 启动后端：
    ```bash

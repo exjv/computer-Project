@@ -6,12 +6,6 @@ import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
-import com.jou.networkrepair.module.system.entity.SysRole;
-import com.jou.networkrepair.module.system.entity.ThirdPartyBind;
-import com.jou.networkrepair.module.system.entity.UserRole;
-import com.jou.networkrepair.module.system.mapper.SysRoleMapper;
-import com.jou.networkrepair.module.system.mapper.ThirdPartyBindMapper;
-import com.jou.networkrepair.module.system.mapper.UserRoleMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
@@ -322,15 +316,15 @@ public class UserController {
 
     private void checkEmployeeNoUnique(String employeeNo, Long id) {
         if (employeeNo == null || employeeNo.trim().isEmpty()) throw new BusinessException("工号不能为空");
-        SysUser exists = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmployeeNo, employeeNo));
-        if (exists != null && (id == null || !id.equals(exists.getId()))) {
+        Long existsCount = userMapper.countByEmployeeNo(employeeNo, id);
+        if (existsCount != null && existsCount > 0) {
             throw new BusinessException("工号已存在");
         }
     }
 
     private void checkRoleValid(String roleCode) {
         if (roleCode == null || roleCode.trim().isEmpty()) throw new BusinessException("角色不能为空");
-        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, roleCode));
+        Role role = roleMapper.selectOne(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, roleCode));
         if (role == null) throw new BusinessException("角色不合法：" + roleCode);
     }
 
