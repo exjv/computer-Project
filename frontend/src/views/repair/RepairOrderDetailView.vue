@@ -1,11 +1,8 @@
 <template>
   <div class="detail-page">
-    <div class="top-bar">
-      <el-button @click="router.back()">返回</el-button>
-      <div style="display:flex;gap:8px">
-        <el-button @click="router.push(`/repair-orders/${id}/progress`)">进度跟踪页</el-button>
-        <el-button type="primary" @click="loadAll">刷新</el-button>
-      </div>
+    <div class="toolbar">
+      <el-button @click="router.push('/repair-orders')">返回列表</el-button>
+      <el-button type="primary" @click="loadAll">刷新</el-button>
     </div>
 
     <el-row :gutter="12">
@@ -13,54 +10,84 @@
         <el-card>
           <template #header>
             <div class="header-row">
-              <span>{{ order.title || '工单详情' }}</span>
-              <el-tag :type="statusTag(order.status)">{{ order.status }}</el-tag>
+              <span>工单详情 - {{ order.orderNo || '-' }}</span>
+              <el-tag :type="statusType(order.status)">{{ order.status || '-' }}</el-tag>
             </div>
           </template>
+
+          <h4>基本信息区</h4>
           <el-descriptions :column="2" border>
-            <el-descriptions-item label="工单编号">{{ order.orderNo }}</el-descriptions-item>
-            <el-descriptions-item label="优先级">{{ order.priority }}</el-descriptions-item>
-            <el-descriptions-item label="报修人ID">{{ order.reporterId }}</el-descriptions-item>
-            <el-descriptions-item label="维修人员ID">{{ order.assignMaintainerId || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="报修时间">{{ order.reportTime || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="进度">{{ order.progress || 0 }}%</el-descriptions-item>
-            <el-descriptions-item label="处理说明" :span="2">{{ order.handleDescription || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="工单编号">{{ order.orderNo || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="报修用户">{{ order.reporterName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="报修人工号">{{ order.reporterEmployeeNo || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="联系方式">{{ order.contactPhone || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="所属部门">{{ order.reporterDepartment || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="地点">{{ order.reportLocation || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="设备编号">{{ order.deviceCode || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="设备名称">{{ order.deviceName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="设备类型">{{ order.deviceType || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="故障类型">{{ order.faultType || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="紧急程度">{{ order.priority || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="是否影响大范围网络">{{ yesNo(order.affectWideAreaNetwork) }}</el-descriptions-item>
             <el-descriptions-item label="故障描述" :span="2">{{ order.description || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="现场图片" :span="2">{{ order.scenePhotoUrls || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="是否需要采购配件">{{ yesNo(order.needPurchaseParts) }}</el-descriptions-item>
+            <el-descriptions-item label="配件说明">{{ order.partsDescription || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="是否申请延期">{{ yesNo(order.applyDelay) }}</el-descriptions-item>
+            <el-descriptions-item label="备注">{{ order.remark || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="用户确认结果">{{ order.userConfirmResult || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="满意度评分">{{ order.satisfactionScore ?? '-' }}</el-descriptions-item>
+            <el-descriptions-item label="用户反馈内容" :span="2">{{ order.feedback || '-' }}</el-descriptions-item>
             <el-descriptions-item label="关闭原因" :span="2">{{ order.closeReason || '-' }}</el-descriptions-item>
+          </el-descriptions>
+
+          <h4 style="margin-top:14px">进度展示</h4>
+          <el-progress :percentage="order.progress || 0" :status="(order.progress||0) >= 100 ? 'success' : ''"/>
+
+          <h4 style="margin-top:14px">时间信息区</h4>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="报修时间">{{ order.reportTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="审核时间">{{ order.auditTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="审核人">{{ order.auditByName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="分配时间">{{ order.assignTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="分配人">{{ order.assignByName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="指派维修人员">{{ order.assignMaintainerName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="接单时间">{{ order.acceptTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="开始维修时间">{{ order.startRepairTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="原预计完成时间">{{ order.originalExpectedFinishTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="延期后预计完成时间">{{ order.delayedExpectedFinishTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="实际完成时间">{{ order.finishTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="验收确认时间">{{ order.confirmTime || '-' }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
 
         <el-card style="margin-top:12px">
-          <template #header>流程节点</template>
-          <el-steps :active="activeStep" align-center finish-status="success">
-            <el-step v-for="s in stepLabels" :key="s" :title="s" />
-          </el-steps>
-          <div class="action-row">
-            <el-button v-for="a in actionButtons" :key="a.action" :type="a.type || 'primary'" plain @click="doAction(a.action)">{{ a.label }}</el-button>
+          <template #header>可操作按钮区</template>
+          <div class="action-wrap">
+            <el-button v-for="btn in actionButtons" :key="btn.status" :type="btn.type || 'primary'" @click="quickUpdate(btn)">{{ btn.label }}</el-button>
           </div>
         </el-card>
       </el-col>
 
       <el-col :span="8">
         <el-card>
-          <template #header>业务流程时间轴</template>
-          <el-timeline>
-            <el-timeline-item v-for="f in flows" :key="f.id" :timestamp="f.createTime" :type="f.toStatus === order.status ? 'primary' : ''">
-              <b>{{ f.fromStatus || '开始' }} → {{ f.toStatus }}</b>
-              <div>{{ f.action }} ｜ {{ f.remark || '无备注' }}</div>
-            </el-timeline-item>
-          </el-timeline>
+          <template #header>附件图片区</template>
+          <div v-if="attachments.length" class="img-grid">
+            <a v-for="a in attachments" :key="a.id" :href="a.fileUrl" target="_blank">
+              <img :src="a.fileUrl" :alt="a.fileName || '附件'" />
+            </a>
+          </div>
+          <el-empty v-else description="暂无附件"/>
         </el-card>
 
         <el-card style="margin-top:12px">
-          <template #header>消息/操作日志</template>
-          <el-empty v-if="!logs.length" description="暂无日志" />
-          <div v-for="l in logs" :key="l.id" class="log-item">
-            <div><b>{{ l.operationType }}</b> - {{ l.module }}</div>
-            <div>{{ l.operationDesc }}</div>
-            <div class="time">{{ l.operationTime }}</div>
-          </div>
+          <template #header>流程记录区</template>
+          <el-timeline>
+            <el-timeline-item v-for="f in flows" :key="f.id" :timestamp="f.operationTime || f.createTime">
+              <div><b>{{ f.fromStatus || '开始' }} → {{ f.toStatus }}</b></div>
+              <div>{{ f.operatorName || '系统' }}（{{ f.operatorRole || '-' }}）</div>
+              <div>{{ f.remark || '-' }}</div>
+            </el-timeline-item>
+          </el-timeline>
         </el-card>
       </el-col>
     </el-row>
@@ -76,74 +103,78 @@ import { useUserStore } from '../../stores/user'
 
 const route = useRoute()
 const router = useRouter()
-const store = useUserStore()
+const userStore = useUserStore()
 const id = route.params.id
 
 const order = ref({})
 const flows = ref([])
-const logs = ref([])
+const attachments = ref([])
 
-const stepLabels = ['已提交/待审核', '待分配', '待接单', '维修人员已接单', '维修中', '待验收/待确认', '已完成/已关闭']
-const stepMap = {
-  '已提交/待审核': 0, '审核通过': 1, '待分配': 1, '已分配': 2, '待接单': 2,
-  '维修人员已接单': 3, '维修中': 4, '待采购/待配件': 4, '申请延期中': 4, '延期已批准': 4,
-  '待验收/待确认': 5, '已完成': 6, '已关闭': 6, '已取消': 6, '审核驳回': 0
-}
-const activeStep = computed(() => stepMap[order.value.status] ?? 0)
+const role = computed(() => userStore.userInfo?.role || '')
+const isAdmin = computed(() => role.value === 'admin')
+const isMaintainer = computed(() => role.value === 'maintainer')
+const isUser = computed(() => role.value === 'user')
 
-const statusTag = (s) => {
-  const map = { '已提交/待审核':'warning','审核通过':'success','审核驳回':'danger','待分配':'warning','已分配':'warning','待接单':'warning',
-    '维修人员已接单':'primary','维修中':'primary','待采购/待配件':'warning','申请延期中':'warning','延期已批准':'success','待验收/待确认':'info',
-    '已完成':'success','已关闭':'info','已取消':'info' }
-  return map[s] || 'info'
-}
-
-const role = computed(() => store.userInfo.role)
 const actionButtons = computed(() => {
-  const s = order.value.status
+  const status = order.value.status
   const buttons = []
-  if (store.hasPerm('repair:audit') && s === '已提交/待审核') buttons.push({ label:'审核通过', action:'ADMIN_APPROVE' })
-  if (store.hasPerm('repair:reject') && s === '已提交/待审核') buttons.push({ label:'审核驳回', action:'ADMIN_REJECT', type:'warning' })
-  if (store.hasPerm('repair:accept') && s === '待接单') buttons.push({ label:'接单', action:'MAINTAINER_ACCEPT' })
-  if (store.hasPerm('repair:start') && s === '维修人员已接单') buttons.push({ label:'开始维修', action:'MAINTAINER_START' })
-  if (store.hasPerm('repair:finish') && ['维修中','延期已批准','待采购/待配件'].includes(s)) buttons.push({ label:'提交完工', action:'MAINTAINER_FINISH' })
-  if (store.hasPerm('repair:confirm') && s === '待验收/待确认') buttons.push({ label:'确认修复', action:'USER_CONFIRM_RESOLVED', type:'success' })
-  if (store.hasPerm('repair:cancel') && ['已提交/待审核','审核驳回'].includes(s)) buttons.push({ label:'撤销报修', action:'USER_CANCEL', type:'danger' })
-  if (store.hasPerm('repair:close') && !['已完成','已关闭','已取消'].includes(s)) buttons.push({ label:'关闭工单', action:'ADMIN_CLOSE', type:'danger' })
+  if (isAdmin.value && status === '已提交/待审核') buttons.push({ label: '审核通过', status: '审核通过', type: 'success' })
+  if (isAdmin.value && status === '已提交/待审核') buttons.push({ label: '审核驳回', status: '审核驳回', type: 'danger' })
+  if (isMaintainer.value && status === '待接单') buttons.push({ label: '接单', status: '维修人员已接单' })
+  if (isMaintainer.value && status === '维修人员已接单') buttons.push({ label: '开始维修', status: '维修中' })
+  if (isMaintainer.value && ['维修中', '延期已批准'].includes(status)) buttons.push({ label: '提交完工', status: '已完成', type: 'success' })
+  if (isUser.value && status === '待验收/待确认') buttons.push({ label: '确认完成', status: '已完成', type: 'success' })
+  if (isAdmin.value && !['已关闭', '已取消'].includes(status)) buttons.push({ label: '关闭工单', status: '已关闭', type: 'warning' })
   return buttons
 })
 
 const loadAll = async () => {
   order.value = await getPage(`/repair-orders/${id}`)
-  const records = await getPage(`/repair-orders/${id}/records`)
-  flows.value = records.flows || []
-  logs.value = records.logs || []
+  flows.value = await getPage(`/repair-orders/${id}/flows`)
+  attachments.value = await getPage(`/repair-orders/${id}/attachments`)
 }
 
-const doAction = async (action) => {
-  const payload = { action }
-  if (action === 'ADMIN_CLOSE' || action === 'USER_CANCEL') {
-    const { value } = await ElMessageBox.prompt('请输入原因', '原因说明')
-    payload.remark = value
+const quickUpdate = async (btn) => {
+  const payload = { status: btn.status }
+  if (btn.status === '已关闭') {
+    const { value } = await ElMessageBox.prompt('请输入关闭原因', '关闭工单')
+    payload.closeReason = value
   }
-  if (action === 'USER_CONFIRM_RESOLVED') {
-    const { value } = await ElMessageBox.prompt('请输入评价（可选）', '维修评价', { inputPlaceholder: '处理及时，体验良好' })
+  if (btn.status === '已完成' && isUser.value) {
+    const { value } = await ElMessageBox.prompt('请输入用户反馈内容（可选）', '反馈')
+    payload.userConfirmResult = '已解决'
     payload.feedback = value
     payload.satisfactionScore = 5
   }
-  await putApi(`/repair-orders/${id}/action`, payload)
+  await putApi(`/repair-orders/${id}/status`, payload)
   ElMessage.success('操作成功')
   await loadAll()
 }
+
+const statusType = (status) => ({
+  '已提交/待审核': 'warning',
+  '审核通过': 'success',
+  '审核驳回': 'danger',
+  '待分配': 'info',
+  '待接单': 'warning',
+  '维修人员已接单': 'info',
+  '维修中': 'primary',
+  '待验收/待确认': 'warning',
+  '已完成': 'success',
+  '已关闭': 'info',
+  '已取消': 'danger'
+}[status] || 'info')
+
+const yesNo = (v) => (v === 1 ? '是' : '否')
 
 onMounted(loadAll)
 </script>
 
 <style scoped>
 .detail-page { display:flex; flex-direction:column; gap:12px; }
-.top-bar { display:flex; justify-content:space-between; align-items:center; }
+.toolbar { display:flex; justify-content:space-between; align-items:center; }
 .header-row { display:flex; justify-content:space-between; align-items:center; }
-.action-row { margin-top: 14px; display:flex; flex-wrap:wrap; gap:8px; }
-.log-item { padding:8px 0; border-bottom:1px solid #f0f0f0; }
-.time { color:#909399; font-size:12px; }
+.action-wrap { display:flex; gap:10px; flex-wrap:wrap; }
+.img-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; }
+.img-grid img { width:100%; height:96px; object-fit:cover; border-radius:4px; border:1px solid #ebeef5; }
 </style>
