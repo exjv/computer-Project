@@ -7,6 +7,7 @@ import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderFeedbackDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
@@ -15,7 +16,9 @@ import com.jou.networkrepair.module.repair.mapper.RepairOrderFlowMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
+import com.jou.networkrepair.module.system.entity.RepairFeedback;
 import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
+import com.jou.networkrepair.module.system.mapper.RepairFeedbackMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +45,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     private final DeviceMapper deviceMapper;
     private final UserMapper userMapper;
     private final BusinessLogMapper businessLogMapper;
+    private final RepairFeedbackMapper repairFeedbackMapper;
 
     @Override
     public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority,
@@ -251,6 +255,76 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         repairOrderMapper.updateById(order);
         addFlow(id, from, dto.getStatus(), "STATUS_UPDATE", userId, role, dto.getRemark());
         addBusinessLog(order, "STATUS_UPDATE", userId, role, from, dto.getStatus(), dto.getRemark());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelByUser(Long id, String remark, Long userId) {
+        RepairOrder order = requireOrder(id);
+        if (!userId.equals(order.getReporterId())) throw new BusinessException("只能撤销自己的工单");
+        if (!Arrays.asList("已提交/待审核", "审核驳回").contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许撤销");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.CANCELED.getLabel());
+        order.setProgress(0);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        order.setRemark(remark);
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "USER_CANCEL", userId, "user", remark);
+        addBusinessLog(order, "USER_CANCEL", userId, "user", from, order.getStatus(), remark);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void feedbackByUser(Long id, RepairOrderFeedbackDTO dto, Long userId) {
+        RepairOrder order = requireOrder(id);
+        if (!userId.equals(order.getReporterId())) throw new BusinessException("只能反馈自己的工单");
+        if (!RepairOrderStatusEnum.PENDING_CONFIRM.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("仅待验收状态可提交验收反馈");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String from = order.getStatus();
+        boolean unresolved = "未解决".equals(dto.getConfirmResult());
+
+        order.setUserConfirmResult(dto.getConfirmResult());
+        order.setSatisfactionScore(dto.getSatisfactionScore());
+        order.setFeedback(dto.getFeedbackContent());
+        order.setConfirmTime(now);
+        order.setRemark(dto.getRemark());
+        if (unresolved) {
+            order.setStatus(RepairOrderStatusEnum.IN_PROGRESS.getLabel());
+            order.setProgress(60);
+            if (dto.getRemark() == null || dto.getRemark().trim().isEmpty()) {
+                order.setRemark("用户反馈未解决，退回维修中");
+            }
+        } else {
+            order.setStatus(RepairOrderStatusEnum.COMPLETED.getLabel());
+            order.setProgress(100);
+            order.setFinishTime(now);
+        }
+        order.setUpdateBy(userId);
+        order.setUpdateTime(now);
+        repairOrderMapper.updateById(order);
+
+        RepairFeedback feedback = new RepairFeedback();
+        feedback.setRepairOrderId(order.getId());
+        feedback.setUserId(userId);
+        feedback.setUserEmployeeNo(order.getReporterEmployeeNo());
+        feedback.setConfirmResult(dto.getConfirmResult());
+        feedback.setSatisfactionScore(dto.getSatisfactionScore());
+        feedback.setFeedbackContent(dto.getFeedbackContent());
+        feedback.setConfirmTime(now);
+        feedback.setCreateTime(now);
+        feedback.setUpdateTime(now);
+        repairFeedbackMapper.insert(feedback);
+
+        String opType = unresolved ? "USER_CONFIRM_UNRESOLVED" : "USER_CONFIRM_RESOLVED";
+        String defaultRemark = unresolved ? "用户确认未解决，退回维修中" : "用户确认已解决，工单完成";
+        String remark = (dto.getRemark() == null || dto.getRemark().trim().isEmpty()) ? defaultRemark : dto.getRemark();
+        addFlow(order.getId(), from, order.getStatus(), opType, userId, "user", remark);
+        addBusinessLog(order, opType, userId, "user", from, order.getStatus(), remark);
     }
 
     @Override

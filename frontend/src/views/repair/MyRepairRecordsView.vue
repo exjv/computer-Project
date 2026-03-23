@@ -79,7 +79,7 @@ const canCancel = row => ['已提交/待审核', '审核驳回'].includes(row.st
 
 const cancelOrder = async row => {
   await ElMessageBox.confirm('确认撤销该报修工单吗？', '提示', { type: 'warning' })
-  await putApi(`/repair-orders/${row.id}/action`, { action: 'USER_CANCEL', remark: '用户主动撤销' })
+  await putApi(`/repair-orders/${row.id}/cancel`, { remark: '用户主动撤销' })
   ElMessage.success('撤销成功')
   await load()
 }
@@ -106,8 +106,8 @@ const submitAcceptance = async () => {
     ElMessage.warning('请填写反馈意见')
     return
   }
-  await putApi(`/repair-orders/${acceptForm.id}/action`, {
-    action: acceptForm.action,
+  await putApi(`/repair-orders/${acceptForm.id}/feedback`, {
+    confirmResult: acceptForm.action === 'USER_CONFIRM_UNRESOLVED' ? '未解决' : '已解决',
     satisfactionScore: acceptForm.satisfactionScore,
     feedbackContent: acceptForm.feedbackContent,
     remark: acceptForm.remark

@@ -2,6 +2,7 @@ package com.jou.networkrepair.module.repair.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderFeedbackDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
@@ -29,6 +30,10 @@ public interface RepairOrderService {
     void assign(Long id, RepairOrderAssignDTO dto, Long userId, String role);
 
     void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role);
+
+    void cancelByUser(Long id, String remark, Long userId);
+
+    void feedbackByUser(Long id, RepairOrderFeedbackDTO dto, Long userId);
 
     List<RepairOrderFlow> flows(Long id, Long userId, String role);
 

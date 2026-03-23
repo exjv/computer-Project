@@ -7,6 +7,7 @@ import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAttachmentDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderFeedbackDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
@@ -91,6 +92,13 @@ public class RepairOrderController {
         return ApiResult.success("提交成功", null);
     }
 
+    @PostMapping("/apply")
+    @PreAuthorize("hasRole('USER')")
+    public ApiResult<Void> apply(@RequestBody @Validated RepairOrderCreateDTO dto, HttpServletRequest request) {
+        repairOrderService.create(dto, (Long) request.getAttribute("userId"));
+        return ApiResult.success("报修申请提交成功", null);
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','USER')")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody RepairOrder req, HttpServletRequest request) {
@@ -103,6 +111,16 @@ public class RepairOrderController {
     public ApiResult<Void> delete(@PathVariable Long id, HttpServletRequest request) {
         repairOrderService.delete(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("删除成功", null);
+    }
+
+    @PutMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('USER')")
+    public ApiResult<Void> cancel(@PathVariable Long id,
+                                  @RequestBody(required = false) Map<String, String> body,
+                                  HttpServletRequest request) {
+        String remark = body == null ? null : body.get("remark");
+        repairOrderService.cancelByUser(id, remark, (Long) request.getAttribute("userId"));
+        return ApiResult.success("撤销成功", null);
     }
 
     @PutMapping("/{id}/assign")
@@ -119,6 +137,13 @@ public class RepairOrderController {
     public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody @Validated RepairOrderStatusDTO dto, HttpServletRequest request) {
         repairOrderService.updateStatus(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("状态更新成功", null);
+    }
+
+    @PutMapping("/{id}/feedback")
+    @PreAuthorize("hasRole('USER')")
+    public ApiResult<Void> feedback(@PathVariable Long id, @RequestBody @Validated RepairOrderFeedbackDTO dto, HttpServletRequest request) {
+        repairOrderService.feedbackByUser(id, dto, (Long) request.getAttribute("userId"));
+        return ApiResult.success("反馈提交成功", null);
     }
 
     @GetMapping("/{id}/flows")
