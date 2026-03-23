@@ -57,3 +57,4 @@
 - 接口说明：`docs/api.md`
 - 论文辅助：`docs/thesis-support.md`
 - 现状审计与改造清单（2026-03-23）：`docs/step24-current-audit-20260323.md`
+- 正式改造前扫描与实施清单（2026-03-23）：`docs/step25-pre-dev-scan-20260323.md`
