@@ -14,6 +14,8 @@ import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderFlowMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
+import com.jou.networkrepair.module.system.entity.BusinessLog;
+import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +41,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     private final RepairOrderFlowMapper repairOrderFlowMapper;
     private final DeviceMapper deviceMapper;
     private final UserMapper userMapper;
+    private final BusinessLogMapper businessLogMapper;
 
     @Override
     public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority,
@@ -133,6 +136,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
         repairOrderMapper.insert(order);
         addFlow(order.getId(), null, order.getStatus(), "CREATE", userId, "user", "提交报修工单");
+        addBusinessLog(order, "CREATE", userId, "user", null, order.getStatus(), "提交报修工单");
     }
 
     @Override
@@ -156,6 +160,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         req.setUpdateBy(userId);
         req.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(req);
+        addBusinessLog(old, "UPDATE", userId, role, old.getStatus(), old.getStatus(), "更新工单信息");
     }
 
     @Override
@@ -170,6 +175,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             throw new BusinessException("终态工单不允许删除");
         }
         repairOrderMapper.deleteById(id);
+        addBusinessLog(order, "DELETE", userId, role, order.getStatus(), null, "删除工单");
     }
 
     @Override
@@ -193,6 +199,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setUpdateTime(now);
         repairOrderMapper.updateById(order);
         addFlow(order.getId(), from, order.getStatus(), "ASSIGN", userId, role, "分配维修人员：" + maintainer.getRealName());
+        addBusinessLog(order, "ASSIGN", userId, role, from, order.getStatus(), "分配维修人员：" + maintainer.getRealName());
     }
 
     @Override
@@ -243,6 +250,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setUpdateTime(now);
         repairOrderMapper.updateById(order);
         addFlow(id, from, dto.getStatus(), "STATUS_UPDATE", userId, role, dto.getRemark());
+        addBusinessLog(order, "STATUS_UPDATE", userId, role, from, dto.getStatus(), dto.getRemark());
     }
 
     @Override
@@ -306,6 +314,35 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         flow.setCreateTime(LocalDateTime.now());
         flow.setUpdateTime(LocalDateTime.now());
         repairOrderFlowMapper.insert(flow);
+    }
+
+    private void addBusinessLog(RepairOrder order, String action, Long operatorId, String role, String fromStatus, String toStatus, String remark) {
+        BusinessLog log = new BusinessLog();
+        log.setBusinessType("REPAIR_ORDER");
+        log.setBusinessNo(order.getOrderNo());
+        log.setBizType("REPAIR_ORDER");
+        log.setBizId(order.getId());
+        log.setOrderNo(order.getOrderNo());
+        log.setAction(action);
+        log.setOperatorId(operatorId);
+        if (operatorId != null) {
+            SysUser u = userMapper.selectById(operatorId);
+            if (u != null) {
+                log.setOperatorName(u.getRealName());
+                log.setOperatorEmployeeNo(u.getEmployeeNo());
+                log.setOperatorJobNo(u.getEmployeeNo());
+            }
+        }
+        log.setOperatorRole(role);
+        log.setStatus(toStatus);
+        String content = String.format("状态：%s -> %s；意见：%s",
+                fromStatus == null ? "-" : fromStatus,
+                toStatus == null ? "-" : toStatus,
+                remark == null ? "-" : remark);
+        log.setContent(content);
+        log.setOperationTime(LocalDateTime.now());
+        log.setCreateTime(LocalDateTime.now());
+        businessLogMapper.insert(log);
     }
 
     private String generateOrderNo() {

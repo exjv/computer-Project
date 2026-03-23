@@ -12,7 +12,11 @@ import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
 import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
+import com.jou.networkrepair.module.log.entity.OperationLog;
+import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
+import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.system.entity.FileAttachment;
+import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
 import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,6 +34,8 @@ import java.util.Map;
 public class RepairOrderController {
     private final RepairOrderService repairOrderService;
     private final FileAttachmentMapper fileAttachmentMapper;
+    private final BusinessLogMapper businessLogMapper;
+    private final OperationLogMapper operationLogMapper;
 
     @GetMapping("/page")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
@@ -119,6 +125,23 @@ public class RepairOrderController {
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<List<RepairOrderFlow>> flows(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @GetMapping("/{id}/records")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    public ApiResult<Map<String, Object>> records(@PathVariable Long id, HttpServletRequest request) {
+        RepairOrder order = repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        Map<String, Object> map = new java.util.HashMap<>();
+        map.put("flows", repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+        map.put("businessLogs", businessLogMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<BusinessLog>()
+                .and(w -> w.eq(BusinessLog::getBusinessType, "REPAIR_ORDER").or().eq(BusinessLog::getBizType, "REPAIR_ORDER"))
+                .and(w -> w.eq(BusinessLog::getBusinessNo, order.getOrderNo()).or().eq(BusinessLog::getBizId, id))
+                .orderByAsc(BusinessLog::getId)));
+        map.put("operationLogs", operationLogMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OperationLog>()
+                .and(w -> w.like(OperationLog::getRequestUrl, "/repair-orders/" + id)
+                        .or().like(OperationLog::getRequestParams, "\"id\":" + id))
+                .orderByDesc(OperationLog::getOperationTime)));
+        return ApiResult.success(map);
     }
 
     @GetMapping("/statistics")

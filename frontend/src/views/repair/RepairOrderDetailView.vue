@@ -43,6 +43,11 @@
           <h4 style="margin-top:14px">进度展示</h4>
           <el-progress :percentage="order.progress || 0" :status="(order.progress||0) >= 100 ? 'success' : ''"/>
 
+          <h4 style="margin-top:14px">工单状态时间轴</h4>
+          <el-steps :active="activeStep" finish-status="success" process-status="process" align-center>
+            <el-step v-for="s in stepNodes" :key="s" :title="s"/>
+          </el-steps>
+
           <h4 style="margin-top:14px">时间信息区</h4>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="报修时间">{{ order.reportTime || '-' }}</el-descriptions-item>
@@ -82,12 +87,39 @@
         <el-card style="margin-top:12px">
           <template #header>流程记录区</template>
           <el-timeline>
-            <el-timeline-item v-for="f in flows" :key="f.id" :timestamp="f.operationTime || f.createTime">
+            <el-timeline-item v-for="f in flows" :key="f.id" :timestamp="f.operationTime || f.createTime" :type="f.toStatus===order.status ? 'primary' : 'info'">
               <div><b>{{ f.fromStatus || '开始' }} → {{ f.toStatus }}</b></div>
-              <div>{{ f.operatorName || '系统' }}（{{ f.operatorRole || '-' }}）</div>
-              <div>{{ f.remark || '-' }}</div>
+              <div>操作人：{{ f.operatorName || '系统' }}（{{ f.operatorRole || '-' }}）</div>
+              <div>操作类型：{{ f.operationType || f.action || '-' }}</div>
+              <div>处理说明：{{ f.remark || '-' }}</div>
             </el-timeline-item>
           </el-timeline>
+        </el-card>
+
+        <el-card style="margin-top:12px">
+          <template #header>消息/操作日志展示</template>
+          <el-tabs>
+            <el-tab-pane label="业务日志">
+              <el-timeline>
+                <el-timeline-item v-for="b in businessLogs" :key="`b-${b.id}`" :timestamp="b.operationTime || b.createTime">
+                  <div><b>{{ b.action || '-' }}</b></div>
+                  <div>操作人：{{ b.operatorName || '-' }}（{{ b.operatorRole || '-' }}）</div>
+                  <div>{{ b.content || '-' }}</div>
+                </el-timeline-item>
+              </el-timeline>
+              <el-empty v-if="!businessLogs.length" description="暂无业务日志"/>
+            </el-tab-pane>
+            <el-tab-pane label="操作日志">
+              <el-timeline>
+                <el-timeline-item v-for="l in operationLogs" :key="`o-${l.id}`" :timestamp="l.operationTime || l.createTime">
+                  <div><b>{{ l.module || '-' }} / {{ l.operationType || '-' }}</b></div>
+                  <div>{{ l.operationDesc || '-' }}</div>
+                  <div>URL: {{ l.requestUrl || '-' }}</div>
+                </el-timeline-item>
+              </el-timeline>
+              <el-empty v-if="!operationLogs.length" description="暂无操作日志"/>
+            </el-tab-pane>
+          </el-tabs>
         </el-card>
       </el-col>
     </el-row>
@@ -109,6 +141,8 @@ const id = route.params.id
 const order = ref({})
 const flows = ref([])
 const attachments = ref([])
+const businessLogs = ref([])
+const operationLogs = ref([])
 
 const role = computed(() => userStore.userInfo?.role || '')
 const isAdmin = computed(() => role.value === 'admin')
@@ -128,9 +162,32 @@ const actionButtons = computed(() => {
   return buttons
 })
 
+const stepNodes = ['已提交/待审核', '审核通过', '待接单', '维修中', '待验收/待确认', '已完成/已关闭']
+const stepIndexMap = {
+  '已提交/待审核': 0,
+  '审核通过': 1,
+  '待分配': 1,
+  '已分配': 2,
+  '待接单': 2,
+  '维修人员已接单': 2,
+  '维修中': 3,
+  '待采购/待配件': 3,
+  '申请延期中': 3,
+  '延期已批准': 3,
+  '待验收/待确认': 4,
+  '已完成': 5,
+  '已关闭': 5,
+  '已取消': 5,
+  '审核驳回': 1
+}
+const activeStep = computed(() => stepIndexMap[order.value.status] ?? 0)
+
 const loadAll = async () => {
   order.value = await getPage(`/repair-orders/${id}`)
-  flows.value = await getPage(`/repair-orders/${id}/flows`)
+  const records = await getPage(`/repair-orders/${id}/records`)
+  flows.value = records.flows || []
+  businessLogs.value = records.businessLogs || []
+  operationLogs.value = records.operationLogs || []
   attachments.value = await getPage(`/repair-orders/${id}/attachments`)
 }
 
