@@ -11,7 +11,9 @@ import com.jou.networkrepair.module.auth.dto.UpdatePasswordDTO;
 import com.jou.networkrepair.module.auth.service.CaptchaService;
 import com.jou.networkrepair.module.auth.vo.LoginVO;
 import com.jou.networkrepair.module.log.entity.LoginLog;
+import com.jou.networkrepair.module.log.entity.OperationLog;
 import com.jou.networkrepair.module.log.mapper.LoginLogMapper;
+import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
@@ -41,6 +43,7 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final LoginLogMapper loginLogMapper;
+    private final OperationLogMapper operationLogMapper;
     private final CaptchaService captchaService;
     private final UserRoleMapper userRoleMapper;
     private final RoleMapper roleMapper;
@@ -150,11 +153,13 @@ public class AuthController {
         String ip = request.getRemoteAddr();
         if (userId == null) {
             saveLoginLog(null, "UNKNOWN", "FAIL_PWD_ILLEGAL_USER", "非法请求", request);
+            savePasswordOperationLog(null, "UNKNOWN", "修改密码", "FAIL", "非法请求", request);
             throw new BusinessException("非法请求，请重新登录后再试");
         }
         SysUser user = userMapper.selectById(userId);
         if (user == null) {
             saveLoginLog(userId, "UNKNOWN", "FAIL_PWD_USER_NOT_FOUND", "用户不存在", request);
+            savePasswordOperationLog(userId, "UNKNOWN", "修改密码", "FAIL", "用户不存在", request);
             throw new BusinessException("用户不存在，无法修改密码");
         }
 
@@ -166,30 +171,37 @@ public class AuthController {
 
         if (isBlank(oldPassword) || isBlank(newPassword) || isBlank(confirmPassword)) {
             saveLoginLog(userId, user.getUsername(), "FAIL_PWD_PARAM_EMPTY", ip, request);
+            savePasswordOperationLog(userId, user.getUsername(), "修改密码", "FAIL", "参数不能为空", request);
             throw new BusinessException("旧密码、新密码、确认密码均不能为空");
         }
         if (isBlank(captchaKey) || isBlank(captchaCode)) {
             saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CAPTCHA_EMPTY", ip, request);
+            savePasswordOperationLog(userId, user.getUsername(), "修改密码", "FAIL", "验证码不能为空", request);
             throw new BusinessException("验证码不能为空");
         }
         if (!captchaService.verify(captchaKey, captchaCode)) {
             saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CAPTCHA", ip, request);
+            savePasswordOperationLog(userId, user.getUsername(), "修改密码", "FAIL", "验证码错误或已失效", request);
             throw new BusinessException("验证码错误或已失效");
         }
         if (!newPassword.equals(confirmPassword)) {
             saveLoginLog(userId, user.getUsername(), "FAIL_PWD_CONFIRM", ip, request);
+            savePasswordOperationLog(userId, user.getUsername(), "修改密码", "FAIL", "两次新密码不一致", request);
             throw new BusinessException("两次输入的新密码不一致");
         }
         if (!PASSWORD_STRENGTH.matcher(newPassword).matches()) {
             saveLoginLog(userId, user.getUsername(), "FAIL_PWD_WEAK", ip, request);
+            savePasswordOperationLog(userId, user.getUsername(), "修改密码", "FAIL", "密码强度不足", request);
             throw new BusinessException("密码强度不足：至少8位且包含字母和数字");
         }
         if (oldPassword.equals(newPassword)) {
             saveLoginLog(userId, user.getUsername(), "FAIL_PWD_SAME", ip, request);
+            savePasswordOperationLog(userId, user.getUsername(), "修改密码", "FAIL", "新旧密码一致", request);
             throw new BusinessException("新旧密码不能一致");
         }
         if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
             saveLoginLog(userId, user.getUsername(), "FAIL_PWD_OLD", ip, request);
+            savePasswordOperationLog(userId, user.getUsername(), "修改密码", "FAIL", "旧密码错误", request);
             throw new BusinessException("旧密码错误");
         }
 
@@ -197,6 +209,7 @@ public class AuthController {
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
         saveLoginLog(userId, user.getUsername(), "SUCCESS_PWD_UPDATE", ip, request);
+        savePasswordOperationLog(userId, user.getUsername(), "修改密码", "SUCCESS", null, request);
         return ApiResult.success("密码修改成功", null);
     }
 
@@ -226,6 +239,23 @@ public class AuthController {
         log.setFailReason(failReason);
         log.setLoginTime(LocalDateTime.now());
         loginLogMapper.insert(log);
+    }
+
+    private void savePasswordOperationLog(Long userId, String username, String operationType, String resultStatus, String errorMsg, HttpServletRequest request) {
+        OperationLog log = new OperationLog();
+        log.setUserId(userId);
+        log.setUsername(username);
+        log.setModule("认证授权");
+        log.setOperationType(operationType);
+        log.setOperationDesc("用户修改密码");
+        log.setRequestMethod(request.getMethod());
+        log.setRequestUrl(request.getRequestURI());
+        log.setIp(request.getRemoteAddr());
+        log.setResultStatus(resultStatus);
+        log.setErrorMessage(errorMsg);
+        log.setOperationTime(LocalDateTime.now());
+        log.setCreateTime(LocalDateTime.now());
+        operationLogMapper.insert(log);
     }
 
     private boolean isBlank(String value) {
