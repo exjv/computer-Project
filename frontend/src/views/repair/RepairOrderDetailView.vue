@@ -63,6 +63,18 @@
             <el-descriptions-item label="实际完成时间">{{ order.finishTime || '-' }}</el-descriptions-item>
             <el-descriptions-item label="验收确认时间">{{ order.confirmTime || '-' }}</el-descriptions-item>
           </el-descriptions>
+
+          <h4 style="margin-top:14px">预计修复时间</h4>
+          <el-card shadow="never">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+              <div>
+                <div>预计完成时间：<b>{{ estimate.estimatedFinishTime || order.expectedFinishTime || '-' }}</b></div>
+                <div>预计耗时：{{ estimate.estimatedHours || '-' }} 小时</div>
+                <div style="color:#606266">预测依据：{{ estimate.basis || '-' }}</div>
+              </div>
+              <el-button size="small" type="primary" @click="loadEstimate">重新计算</el-button>
+            </div>
+          </el-card>
         </el-card>
 
         <el-card style="margin-top:12px">
@@ -143,6 +155,7 @@ const flows = ref([])
 const attachments = ref([])
 const businessLogs = ref([])
 const operationLogs = ref([])
+const estimate = ref({})
 
 const role = computed(() => userStore.userInfo?.role || '')
 const isAdmin = computed(() => role.value === 'admin')
@@ -192,6 +205,11 @@ const loadAll = async () => {
   businessLogs.value = records.businessLogs || []
   operationLogs.value = records.operationLogs || []
   attachments.value = await getPage(`/repair-orders/${id}/attachments`)
+  await loadEstimate()
+}
+
+const loadEstimate = async () => {
+  estimate.value = await getPage(`/repair-orders/${id}/estimate-finish-time`)
 }
 
 const quickUpdate = async (btn) => {

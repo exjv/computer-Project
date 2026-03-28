@@ -12,6 +12,7 @@ import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
+import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -63,6 +64,8 @@ public interface RepairOrderService {
     void feedbackByUser(Long id, RepairOrderFeedbackDTO dto, Long userId);
 
     List<AssignmentRecommendationVO> recommendAssignments(Long id, Long userId, String role);
+
+    RepairEstimateVO estimateFinishTime(Long id, Long userId, String role);
 
     List<RepairOrderFlow> flows(Long id, Long userId, String role);
 

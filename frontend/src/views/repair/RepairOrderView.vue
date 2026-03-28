@@ -25,6 +25,10 @@
         <el-button @click="reset">重置</el-button>
       </el-form>
 
+      <el-card shadow="never" style="margin-top:10px">
+        <div>预测样本：{{ stats.predictionComparableCount || 0 }}，平均绝对误差：{{ stats.predictionAvgAbsErrorHours || 0 }}h，4h内命中：{{ stats.predictionWithin4hCount || 0 }}，24h内命中：{{ stats.predictionWithin24hCount || 0 }}</div>
+      </el-card>
+
       <el-table :data="list" style="margin-top: 12px">
         <el-table-column prop="orderNo" label="工单编号" width="170"/>
         <el-table-column prop="reporterName" label="报修用户" width="110"/>
@@ -124,6 +128,7 @@ const page = reactive({ current: 1, size: 10 })
 const list = ref([])
 const total = ref(0)
 const statusOptions = ref([])
+const stats = ref({})
 
 const devices = ref([])
 const maintainers = ref([])
@@ -140,6 +145,7 @@ const load = async () => {
   const data = await getPage(path, { ...query, ...page })
   list.value = data.records || []
   total.value = data.total || 0
+  stats.value = await getPage('/repair-orders/statistics')
 }
 
 const reset = async () => {

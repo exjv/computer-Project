@@ -18,6 +18,7 @@ import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
 import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
+import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
 import com.jou.networkrepair.module.log.entity.OperationLog;
 import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
@@ -140,6 +141,12 @@ public class RepairOrderController {
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResult<List<AssignmentRecommendationVO>> assignRecommendations(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.recommendAssignments(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @GetMapping("/{id}/estimate-finish-time")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    public ApiResult<RepairEstimateVO> estimateFinishTime(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.estimateFinishTime(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @PutMapping("/{id}/audit")
