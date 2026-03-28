@@ -78,7 +78,17 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="assignDialog" title="分配维修人员" width="520px">
+    <el-dialog v-model="assignDialog" title="分配维修人员" width="980px">
+      <el-alert title="系统根据工单优先级、人员负载、历史能力进行推荐，可手动调整" type="info" :closable="false" style="margin-bottom:10px"/>
+      <el-table :data="recommendations" size="small" max-height="220">
+        <el-table-column prop="maintainerName" label="维修人员" width="100"/>
+        <el-table-column prop="recommendationScore" label="推荐分" width="80"/>
+        <el-table-column prop="unfinishedCount" label="未完成" width="70"/>
+        <el-table-column prop="processingCount" label="处理中" width="70"/>
+        <el-table-column prop="avgHandleHours" label="均时(h)" width="75"/>
+        <el-table-column prop="recommendReason" label="推荐说明" min-width="220" show-overflow-tooltip/>
+        <el-table-column label="选择" width="70"><template #default="s"><el-button link @click="assignForm.assignMaintainerId=s.row.maintainerId">选中</el-button></template></el-table-column>
+      </el-table>
       <el-form :model="assignForm" label-width="120px">
         <el-form-item label="维修人员">
           <el-select v-model="assignForm.assignMaintainerId" style="width:100%">
@@ -117,6 +127,7 @@ const statusOptions = ref([])
 
 const devices = ref([])
 const maintainers = ref([])
+const recommendations = ref([])
 const dialogVisible = ref(false)
 const editMode = ref(false)
 const assignDialog = ref(false)
@@ -182,6 +193,7 @@ const remove = async (row) => {
 const openAssign = async (row) => {
   assignId.value = row.id
   assignForm.assignMaintainerId = row.assignMaintainerId || null
+  recommendations.value = await getPage(`/repair-orders/${row.id}/assign-recommendations`)
   assignDialog.value = true
 }
 

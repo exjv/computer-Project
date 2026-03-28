@@ -11,6 +11,7 @@ import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
+import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -60,6 +61,8 @@ public interface RepairOrderService {
     void cancelByUser(Long id, String remark, Long userId);
 
     void feedbackByUser(Long id, RepairOrderFeedbackDTO dto, Long userId);
+
+    List<AssignmentRecommendationVO> recommendAssignments(Long id, Long userId, String role);
 
     List<RepairOrderFlow> flows(Long id, Long userId, String role);
 

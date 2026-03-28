@@ -17,6 +17,7 @@ import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
 import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
+import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.log.entity.OperationLog;
 import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
@@ -133,6 +134,12 @@ public class RepairOrderController {
     public ApiResult<Void> assign(@PathVariable Long id, @RequestBody @Validated RepairOrderAssignDTO dto, HttpServletRequest request) {
         repairOrderService.assign(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("分配成功", null);
+    }
+
+    @GetMapping("/{id}/assign-recommendations")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<AssignmentRecommendationVO>> assignRecommendations(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.recommendAssignments(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @PutMapping("/{id}/audit")

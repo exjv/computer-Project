@@ -19,6 +19,7 @@ import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderFlowMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
+import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.system.entity.FileAttachment;
 import com.jou.networkrepair.module.system.entity.RepairFeedback;
@@ -40,6 +41,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -647,6 +649,58 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     }
 
     @Override
+    public List<AssignmentRecommendationVO> recommendAssignments(Long id, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可查看推荐分配人");
+        RepairOrder order = requireOrder(id);
+        NetworkDevice device = deviceMapper.selectById(order.getDeviceId());
+        double priorityScore = calcPriorityScore(order, device);
+
+        List<SysUser> maintainers = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getRole, "maintainer")
+                .eq(SysUser::getStatus, 1)
+                .orderByAsc(SysUser::getId));
+        if (maintainers.isEmpty()) return java.util.Collections.emptyList();
+
+        return maintainers.stream().map(m -> {
+            Long unfinished = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .notIn(RepairOrder::getStatus, RepairOrderStatusEnum.terminalStatuses()));
+            Long processing = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .in(RepairOrder::getStatus, Arrays.asList(
+                            RepairOrderStatusEnum.ACCEPTED.getLabel(),
+                            RepairOrderStatusEnum.IN_PROGRESS.getLabel(),
+                            RepairOrderStatusEnum.PENDING_PARTS.getLabel(),
+                            RepairOrderStatusEnum.DELAY_APPLYING.getLabel(),
+                            RepairOrderStatusEnum.DELAY_APPROVED.getLabel())));
+
+            List<RepairOrder> finishedOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .isNotNull(RepairOrder::getReportTime)
+                    .isNotNull(RepairOrder::getFinishTime)
+                    .orderByDesc(RepairOrder::getId).last("limit 30"));
+            double avgHandleHours = finishedOrders.isEmpty() ? 8D : finishedOrders.stream()
+                    .mapToDouble(o -> java.time.Duration.between(o.getReportTime(), o.getFinishTime()).toMinutes() / 60.0)
+                    .average().orElse(8D);
+
+            List<RepairOrder> skillOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .eq(order.getDeviceType() != null, RepairOrder::getDeviceType, order.getDeviceType())
+                    .in(RepairOrder::getStatus, Arrays.asList(RepairOrderStatusEnum.COMPLETED.getLabel(), RepairOrderStatusEnum.CLOSED.getLabel()))
+                    .orderByDesc(RepairOrder::getId).last("limit 20"));
+            double skillMatch = skillOrders.isEmpty() ? 40D : Math.min(100D, 40D + skillOrders.size() * 8D);
+
+            double loadScore = Math.max(0D, 100D - unfinished * 12D - processing * 10D - Math.max(0D, avgHandleHours - 8D) * 2D);
+            double recommendation = priorityScore * 0.35 + loadScore * 0.40 + skillMatch * 0.25;
+            String reason = String.format("优先级%.1f；未完成%d、处理中%d；历史平均处理%.1fh；设备类型匹配度%.1f",
+                    priorityScore, unfinished, processing, avgHandleHours, skillMatch);
+            return new AssignmentRecommendationVO(m.getId(), m.getRealName(), round(recommendation), round(priorityScore),
+                    round(loadScore), unfinished, processing, round(avgHandleHours), round(skillMatch), reason);
+        }).sorted((a, b) -> Double.compare(b.getRecommendationScore(), a.getRecommendationScore()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public List<RepairOrderFlow> flows(Long id, Long userId, String role) {
         RepairOrder order = requireOrder(id);
         ensureScope(order, userId, role);
@@ -801,5 +855,25 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         if (userId == null || !userId.equals(order.getAssignMaintainerId())) {
             throw new BusinessException("维修人员只能操作分配给自己的工单");
         }
+    }
+
+    private double calcPriorityScore(RepairOrder order, NetworkDevice device) {
+        double urgent = "高".equals(order.getPriority()) ? 100D : ("中".equals(order.getPriority()) ? 70D : 40D);
+        double deviceImportance = 50D;
+        if (device != null) {
+            int repairCount = device.getTotalRepairRequests() == null ? 0 : device.getTotalRepairRequests();
+            if (repairCount >= 10) deviceImportance = 90D;
+            else if (repairCount >= 5) deviceImportance = 75D;
+            else deviceImportance = 55D;
+        }
+        double waitHours = order.getReportTime() == null ? 0D :
+                Math.max(0D, java.time.Duration.between(order.getReportTime(), LocalDateTime.now()).toMinutes() / 60.0);
+        double waitScore = Math.min(100D, waitHours * 2D);
+        double impactScore = order.getAffectWideAreaNetwork() != null && order.getAffectWideAreaNetwork() == 1 ? 100D : 50D;
+        return round(urgent * 0.35 + deviceImportance * 0.20 + waitScore * 0.20 + impactScore * 0.25);
+    }
+
+    private double round(double v) {
+        return Math.round(v * 10.0) / 10.0;
     }
 }
