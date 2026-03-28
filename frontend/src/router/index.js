@@ -16,6 +16,7 @@ const routes = [
     { path: 'repair-apply', component: () => import('../views/repair/RepairApplyView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-apply'] } },
     { path: 'my-repairs', component: () => import('../views/repair/MyRepairRecordsView.vue'), meta: { roles: ROUTE_ROLE_MAP['/my-repairs'] } },
     { path: 'my-repairs/:id/progress', component: () => import('../views/repair/RepairOrderProgressView.vue'), meta: { roles: ROUTE_ROLE_MAP['/my-repairs'] } },
+    { path: 'maintainer-orders', component: () => import('../views/repair/MaintainerPendingOrdersView.vue'), meta: { roles: ROUTE_ROLE_MAP['/maintainer-orders'] } },
     { path: 'repair-records', component: () => import('../views/record/RepairRecordView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-records'] } },
     { path: 'logs', component: () => import('../views/log/LogView.vue'), meta: { roles: ROUTE_ROLE_MAP['/logs'] } },
     { path: 'profile', component: () => import('../views/profile/ProfileView.vue'), meta: { roles: ROUTE_ROLE_MAP['/profile'] } }

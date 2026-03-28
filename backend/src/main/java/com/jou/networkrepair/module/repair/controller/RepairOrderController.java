@@ -178,6 +178,72 @@ public class RepairOrderController {
         return ApiResult.success("反馈提交成功", null);
     }
 
+    @PutMapping("/{id}/maintainer/accept")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerAccept(@PathVariable Long id,
+                                            @RequestBody(required = false) Map<String, String> body,
+                                            HttpServletRequest request) {
+        repairOrderService.maintainerAccept(id, body == null ? null : body.get("remark"),
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("接单成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/reject")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerReject(@PathVariable Long id,
+                                            @RequestBody Map<String, String> body,
+                                            HttpServletRequest request) {
+        repairOrderService.maintainerReject(id, body == null ? null : body.get("reason"),
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("拒单成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/start")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerStart(@PathVariable Long id,
+                                           @RequestBody(required = false) Map<String, String> body,
+                                           HttpServletRequest request) {
+        repairOrderService.maintainerStart(id, body == null ? null : body.get("remark"),
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("开始维修成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/progress")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerProgress(@PathVariable Long id,
+                                              @RequestBody @Validated RepairOrderStatusDTO dto,
+                                              HttpServletRequest request) {
+        repairOrderService.maintainerUpdateProgress(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("进度更新成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/delay-apply")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerDelayApply(@PathVariable Long id,
+                                                @RequestBody @Validated RepairOrderStatusDTO dto,
+                                                HttpServletRequest request) {
+        repairOrderService.maintainerApplyDelay(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("延期申请提交成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/parts-apply")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerPartsApply(@PathVariable Long id,
+                                                @RequestBody @Validated RepairOrderStatusDTO dto,
+                                                HttpServletRequest request) {
+        repairOrderService.maintainerApplyParts(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("配件申请提交成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/finish")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerFinish(@PathVariable Long id,
+                                            @RequestBody @Validated RepairOrderStatusDTO dto,
+                                            HttpServletRequest request) {
+        repairOrderService.maintainerFinish(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("完工提交成功", null);
+    }
+
     @GetMapping("/{id}/flows")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<List<RepairOrderFlow>> flows(@PathVariable Long id, HttpServletRequest request) {

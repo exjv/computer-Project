@@ -41,6 +41,20 @@ public interface RepairOrderService {
 
     void closeByAdmin(Long id, RepairOrderCloseDTO dto, Long userId, String role);
 
+    void maintainerAccept(Long id, String remark, Long userId, String role);
+
+    void maintainerReject(Long id, String reason, Long userId, String role);
+
+    void maintainerStart(Long id, String remark, Long userId, String role);
+
+    void maintainerUpdateProgress(Long id, RepairOrderStatusDTO dto, Long userId, String role);
+
+    void maintainerApplyDelay(Long id, RepairOrderStatusDTO dto, Long userId, String role);
+
+    void maintainerApplyParts(Long id, RepairOrderStatusDTO dto, Long userId, String role);
+
+    void maintainerFinish(Long id, RepairOrderStatusDTO dto, Long userId, String role);
+
     void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role);
 
     void cancelByUser(Long id, String remark, Long userId);

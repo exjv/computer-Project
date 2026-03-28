@@ -20,8 +20,10 @@ import com.jou.networkrepair.module.repair.mapper.RepairOrderFlowMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
+import com.jou.networkrepair.module.system.entity.FileAttachment;
 import com.jou.networkrepair.module.system.entity.RepairFeedback;
 import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
+import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
 import com.jou.networkrepair.module.system.mapper.RepairFeedbackMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
@@ -50,6 +52,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
     private final UserMapper userMapper;
     private final BusinessLogMapper businessLogMapper;
     private final RepairFeedbackMapper repairFeedbackMapper;
+    private final FileAttachmentMapper fileAttachmentMapper;
 
     @Override
     public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority,
@@ -345,6 +348,179 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void maintainerAccept(Long id, String remark, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!RepairOrderStatusEnum.PENDING_ACCEPT.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("未分配不能接单");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.ACCEPTED.getLabel());
+        order.setAcceptTime(LocalDateTime.now());
+        order.setProgress(Math.max(defaultZero(order.getProgress()), 40));
+        order.setRemark(remark);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_ACCEPT", userId, role, remark);
+        addBusinessLog(order, "MAINTAINER_ACCEPT", userId, role, from, order.getStatus(), remark);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerReject(Long id, String reason, Long userId, String role) {
+        requireMaintainer(role);
+        if (reason == null || reason.trim().isEmpty()) throw new BusinessException("拒单必须填写原因");
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!RepairOrderStatusEnum.PENDING_ACCEPT.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("当前状态不能拒单");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.PENDING_ASSIGN.getLabel());
+        order.setAssignMaintainerId(null);
+        order.setAssignMaintainerEmployeeNo(null);
+        order.setAssignMaintainerName(null);
+        order.setAcceptTime(null);
+        order.setRemark(reason);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_REJECT", userId, role, reason);
+        addBusinessLog(order, "MAINTAINER_REJECT", userId, role, from, order.getStatus(), reason);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerStart(Long id, String remark, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!RepairOrderStatusEnum.ACCEPTED.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("未接单不能开始维修");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.IN_PROGRESS.getLabel());
+        order.setStartRepairTime(LocalDateTime.now());
+        order.setProgress(Math.max(defaultZero(order.getProgress()), 50));
+        order.setRemark(remark);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_START", userId, role, remark);
+        addBusinessLog(order, "MAINTAINER_START", userId, role, from, order.getStatus(), remark);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerUpdateProgress(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!Arrays.asList(RepairOrderStatusEnum.IN_PROGRESS.getLabel(), RepairOrderStatusEnum.DELAY_APPROVED.getLabel(),
+                RepairOrderStatusEnum.PENDING_PARTS.getLabel()).contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许更新维修进度");
+        }
+        if (dto.getProgress() == null) throw new BusinessException("请填写进度百分比");
+        order.setProgress(dto.getProgress());
+        if (dto.getHandleDescription() != null) order.setHandleDescription(dto.getHandleDescription());
+        if (dto.getExpectedFinishTime() != null) order.setExpectedFinishTime(dto.getExpectedFinishTime());
+        order.setRemark(dto.getRemark());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        if (dto.getScenePhotoUrls() != null) {
+            for (String url : dto.getScenePhotoUrls()) {
+                if (url == null || url.trim().isEmpty()) continue;
+                FileAttachment fa = new FileAttachment();
+                fa.setBusinessType("REPAIR_ORDER");
+                fa.setBusinessId(order.getId());
+                fa.setBizType("REPAIR_ORDER");
+                fa.setBizId(order.getId());
+                fa.setFileName("现场照片");
+                fa.setFileUrl(url);
+                fa.setFileType("image");
+                fa.setUploaderId(userId);
+                fa.setUploadTime(LocalDateTime.now());
+                fa.setRemark("维修现场照片");
+                fa.setCreateTime(LocalDateTime.now());
+                fa.setUpdateTime(LocalDateTime.now());
+                fileAttachmentMapper.insert(fa);
+            }
+        }
+        addFlow(order.getId(), order.getStatus(), order.getStatus(), "MAINTAINER_PROGRESS", userId, role, dto.getRemark());
+        addBusinessLog(order, "MAINTAINER_PROGRESS", userId, role, order.getStatus(), order.getStatus(),
+                "进度更新至" + dto.getProgress() + "%，处理说明：" + (dto.getHandleDescription() == null ? "-" : dto.getHandleDescription()));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerApplyDelay(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!Arrays.asList(RepairOrderStatusEnum.IN_PROGRESS.getLabel(), RepairOrderStatusEnum.DELAY_APPROVED.getLabel()).contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许申请延期");
+        }
+        String from = order.getStatus();
+        order.setApplyDelay(1);
+        order.setStatus(RepairOrderStatusEnum.DELAY_APPLYING.getLabel());
+        order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+        order.setRemark(dto.getRemark());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_DELAY_APPLY", userId, role, dto.getRemark());
+        addBusinessLog(order, "MAINTAINER_DELAY_APPLY", userId, role, from, order.getStatus(), dto.getRemark());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerApplyParts(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!Arrays.asList(RepairOrderStatusEnum.IN_PROGRESS.getLabel(), RepairOrderStatusEnum.DELAY_APPROVED.getLabel()).contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许申请配件");
+        }
+        String from = order.getStatus();
+        order.setNeedPurchaseParts(1);
+        order.setStatus(RepairOrderStatusEnum.PENDING_PARTS.getLabel());
+        order.setPartsDescription(dto.getPartsDescription());
+        order.setRemark(dto.getRemark());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_PARTS_APPLY", userId, role, dto.getRemark());
+        addBusinessLog(order, "MAINTAINER_PARTS_APPLY", userId, role, from, order.getStatus(), dto.getRemark());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerFinish(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!Arrays.asList(RepairOrderStatusEnum.IN_PROGRESS.getLabel(), RepairOrderStatusEnum.DELAY_APPROVED.getLabel(),
+                RepairOrderStatusEnum.PENDING_PARTS.getLabel()).contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许提交完工");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.PENDING_CONFIRM.getLabel());
+        order.setProgress(100);
+        order.setFinishTime(LocalDateTime.now());
+        if (dto.getHandleDescription() != null) order.setHandleDescription(dto.getHandleDescription());
+        order.setRemark(dto.getRemark());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_FINISH", userId, role, dto.getRemark());
+        addBusinessLog(order, "MAINTAINER_FINISH", userId, role, from, order.getStatus(), dto.getRemark());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
         if (!RepairOrderStatusEnum.containsLabel(dto.getStatus())) {
             throw new BusinessException("不支持的工单状态");
@@ -614,6 +790,16 @@ public class RepairOrderServiceImpl implements RepairOrderService {
                 && !"admin".equals(role)
                 && !RepairOrderStatusEnum.COMPLETED.getLabel().equals(from)) {
             throw new BusinessException("仅管理员可关闭，且需满足业务条件");
+        }
+    }
+
+    private void requireMaintainer(String role) {
+        if (!"maintainer".equals(role)) throw new BusinessException("仅维修人员可执行该操作");
+    }
+
+    private void ensureMaintainerScope(RepairOrder order, Long userId) {
+        if (userId == null || !userId.equals(order.getAssignMaintainerId())) {
+            throw new BusinessException("维修人员只能操作分配给自己的工单");
         }
     }
 }

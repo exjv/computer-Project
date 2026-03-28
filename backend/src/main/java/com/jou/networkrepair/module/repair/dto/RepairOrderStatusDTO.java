@@ -7,6 +7,7 @@ import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class RepairOrderStatusDTO {
@@ -27,6 +28,9 @@ public class RepairOrderStatusDTO {
     private Integer satisfactionScore;
     private String feedback;
     private String closeReason;
+    private String handleDescription;
+    private LocalDateTime expectedFinishTime;
+    private List<String> scenePhotoUrls;
 
     @Size(max = 500, message = "备注长度不能超过500")
     private String remark;
