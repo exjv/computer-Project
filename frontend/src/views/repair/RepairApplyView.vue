@@ -3,6 +3,10 @@
     <template #header>报修申请页</template>
     <el-form :model="form" label-width="120px">
       <el-form-item label="设备"><el-select v-model="form.deviceId" style="width:100%"><el-option v-for="d in devices" :key="d.id" :label="`${d.deviceCode} - ${d.deviceName}`" :value="d.id"/></el-select></el-form-item>
+      <el-form-item label="审批策略">
+        <el-alert v-if="selectedDevice" :type="selectedDevice.repairApprovalRequired===1 ? 'warning' : 'success'" :closable="false"
+          :title="selectedDevice.repairApprovalRequired===1 ? '该设备报修需管理员审核，审核通过后进入分配流程' : '该设备报修后将直接进入待分配流程'" />
+      </el-form-item>
       <el-form-item label="联系方式"><el-input v-model="form.contactPhone"/></el-form-item>
       <el-form-item label="所属部门"><el-input v-model="form.reporterDepartment"/></el-form-item>
       <el-form-item label="地点"><el-input v-model="form.reportLocation"/></el-form-item>
@@ -20,13 +24,14 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { getPage, postApi } from '../../api'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const devices = ref([])
+
 const form = reactive({
   deviceId: null,
   contactPhone: '',
@@ -38,6 +43,8 @@ const form = reactive({
   affectWideAreaNetwork: 0,
   remark: ''
 })
+
+const selectedDevice = computed(() => devices.value.find(d => d.id === form.deviceId))
 
 const submitApply = async () => {
   if (!form.deviceId) return ElMessage.warning('请选择设备')

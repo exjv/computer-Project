@@ -139,8 +139,9 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
         order.setExpectedFinishTime(dto.getDelayedExpectedFinishTime() != null ? dto.getDelayedExpectedFinishTime() : dto.getOriginalExpectedFinishTime());
 
-        order.setStatus(RepairOrderStatusEnum.SUBMITTED.getLabel());
-        order.setProgress(5);
+        boolean approvalRequired = device.getRepairApprovalRequired() != null && device.getRepairApprovalRequired() == 1;
+        order.setStatus(approvalRequired ? RepairOrderStatusEnum.SUBMITTED.getLabel() : RepairOrderStatusEnum.PENDING_ASSIGN.getLabel());
+        order.setProgress(approvalRequired ? 5 : 20);
         order.setReportTime(now);
         order.setRemark(dto.getRemark());
         order.setCreateBy(userId);
@@ -149,8 +150,9 @@ public class RepairOrderServiceImpl implements RepairOrderService {
         order.setUpdateTime(now);
 
         repairOrderMapper.insert(order);
-        addFlow(order.getId(), null, order.getStatus(), "CREATE", userId, "user", "提交报修工单");
-        addBusinessLog(order, "CREATE", userId, "user", null, order.getStatus(), "提交报修工单");
+        String createRemark = approvalRequired ? "提交报修工单，等待管理员审核" : "提交报修工单，设备无需审核直接进入待分配";
+        addFlow(order.getId(), null, order.getStatus(), "CREATE", userId, "user", createRemark);
+        addBusinessLog(order, "CREATE", userId, "user", null, order.getStatus(), createRemark);
     }
 
     @Override
