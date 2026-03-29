@@ -21,7 +21,8 @@
 - 报表导出（管理员 Excel 导出工单统计/设备维修记录，支持时间范围与设备筛选）
 
 ## 运行步骤
-1. 创建数据库并导入：`sql/init.sql`
+1. 创建数据库并导入（推荐最终统一脚本）：`sql/final_schema.sql`
+   - 兼容旧流程时可使用：`sql/init.sql`
    - 若执行第 2 步数据库重构，请追加执行：`sql/migration/20260323_step26_refactor_models.sql`
    - 若执行第 4 步登录重构补丁：`sql/migration/20260323_step27_auth_login_refactor.sql`
    - 若执行第 17 步维修记录强化补丁：`sql/migration/20260329_step28_repair_record_enhance.sql`
