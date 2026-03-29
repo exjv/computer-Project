@@ -1,6 +1,5 @@
 package com.jou.networkrepair.common.security;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +15,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+        SysUser user = userMapper.findByAccount(username);
         if (user == null) throw new UsernameNotFoundException("用户不存在");
         return new SecurityUser(user.getId(), user.getUsername(), user.getPassword(), user.getRole(), user.getStatus());
     }

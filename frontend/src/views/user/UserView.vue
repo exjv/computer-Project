@@ -87,16 +87,18 @@
 
     <el-dialog v-model="importResultDialog" title="导入结果" width="640px">
       <el-alert type="info" :closable="false" :title="`成功 ${importResult.successCount || 0} 条，失败 ${importResult.failCount || 0} 条`" />
-      <el-table :data="(importResult.errors || []).map((e,i)=>({id:i+1,msg:e}))" style="margin-top:12px" max-height="300">
+      <el-table :data="errorRows" style="margin-top:12px" max-height="300">
         <el-table-column prop="id" label="#" width="60"/>
-        <el-table-column prop="msg" label="错误信息"/>
+        <el-table-column prop="rowNo" label="行号" width="80"/>
+        <el-table-column prop="employeeNo" label="工号" width="140"/>
+        <el-table-column prop="message" label="错误信息"/>
       </el-table>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { delApi, getPage, postApi, putApi } from '../../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -117,6 +119,12 @@ const batchText = ref('')
 
 const importResultDialog = ref(false)
 const importResult = reactive({ successCount: 0, failCount: 0, errors: [] })
+const errorRows = computed(() => (importResult.errors || []).map((e, i) => ({
+  id: i + 1,
+  rowNo: e?.rowNo ?? '-',
+  employeeNo: e?.employeeNo || '-',
+  message: typeof e === 'string' ? e : (e?.message || '-')
+})))
 
 const loadRoles = async () => {
   roleOptions.value = await getPage('/users/roles')

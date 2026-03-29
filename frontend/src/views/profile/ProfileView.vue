@@ -76,17 +76,19 @@ const refreshCaptcha = async () => {
 const strongPassword = value => /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(value || '')
 
 const savePwd = async () => {
-  if (!pwd.oldPassword || !pwd.newPassword || !pwd.confirmPassword) return ElMessage.warning('请完整填写密码项')
+  if (!pwd.oldPassword || !pwd.newPassword || !pwd.confirmPassword) return ElMessage.warning('请完整填写旧密码、新密码与确认密码')
   if (pwd.newPassword !== pwd.confirmPassword) return ElMessage.warning('两次输入的新密码不一致')
-  if (!strongPassword(pwd.newPassword)) return ElMessage.warning('密码至少8位且必须包含字母和数字')
-  if (!pwd.captchaKey || !pwd.captchaCode) return ElMessage.warning('请先输入验证码')
+  if (!strongPassword(pwd.newPassword)) return ElMessage.warning('密码强度不足：至少8位且包含字母和数字')
+  if (!pwd.captchaKey || !pwd.captchaCode) return ElMessage.warning('请输入验证码')
   try {
     await updatePasswordApi(pwd)
-    ElMessage.success('密码修改成功')
+    ElMessage.success('密码修改成功，请使用新密码重新登录')
     pwd.oldPassword = ''
     pwd.newPassword = ''
     pwd.confirmPassword = ''
     pwd.captchaCode = ''
+  } catch (e) {
+    ElMessage.error(e?.message || '密码修改失败')
   } finally {
     await refreshCaptcha()
   }
