@@ -242,7 +242,10 @@ CREATE TABLE announcement (
   content TEXT,
   publisher_id BIGINT,
   status VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED',
+  top_flag TINYINT NOT NULL DEFAULT 0,
   sort_no INT DEFAULT 0,
+  publish_time DATETIME,
+  expire_time DATETIME,
   create_time DATETIME NOT NULL,
   update_time DATETIME NOT NULL,
   CONSTRAINT fk_announcement_publisher FOREIGN KEY (publisher_id) REFERENCES `user`(id)
@@ -332,6 +335,6 @@ INSERT INTO repair_record VALUES
 (2,5,3,5,'策略冲突','梳理ACL并调整策略顺序','业务访问恢复',1,NOW(),NOW(),NOW()),
 (3,3,1,5,'光模块松动','重新插拔并清洁光纤接口','当前稳定观察中',0,NOW(),NOW(),NOW());
 
-INSERT INTO notice VALUES
-(1,'校园网设备巡检通知','本周六进行核心网络设备巡检，期间部分区域网络可能短时波动。',1,NOW(),NOW()),
-(2,'报修系统升级完成','校园网络报修系统已升级，支持在线查看维修进度。',1,NOW(),NOW());
+INSERT INTO announcement (id,title,content,publisher_id,status,top_flag,sort_no,publish_time,expire_time,create_time,update_time) VALUES
+(1,'校园网设备巡检通知','本周六进行核心网络设备巡检，期间部分区域网络可能短时波动。',1,'ONLINE',0,0,NOW(),NULL,NOW(),NOW()),
+(2,'报修系统升级完成','校园网络报修系统已升级，支持在线查看维修进度。',1,'ONLINE',0,0,NOW(),NULL,NOW(),NOW());

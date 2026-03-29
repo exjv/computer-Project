@@ -262,8 +262,10 @@ CREATE TABLE announcement (
   content TEXT,
   publisher_id BIGINT,
   status VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED',
+  top_flag TINYINT NOT NULL DEFAULT 0,
   sort_no INT DEFAULT 0,
   publish_time DATETIME,
+  expire_time DATETIME,
   create_time DATETIME NOT NULL,
   update_time DATETIME NOT NULL,
   CONSTRAINT fk_announcement_publisher FOREIGN KEY (publisher_id) REFERENCES `user`(id)
