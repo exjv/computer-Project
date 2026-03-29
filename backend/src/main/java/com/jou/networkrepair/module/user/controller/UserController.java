@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.USER_MANAGE + "')")
 public class UserController {
-    private static final Pattern PHONE_PATTERN = Pattern.compile("^1\\\\d{10}$");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^1\\d{10}$");
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
@@ -101,8 +101,12 @@ public class UserController {
     @Loggable(module = "用户管理", operationType = "新增", operationDesc = "新增用户")
     public ApiResult<Void> add(@RequestBody @Validated SysUser user) {
         validateRequired(user.getEmployeeNo(), "工号不能为空");
+        if (user.getUsername() == null || user.getUsername().trim().isEmpty()) {
+            user.setUsername(user.getEmployeeNo());
+        }
         validateRequired(user.getRealName(), "姓名不能为空");
         validateRequired(user.getRole(), "角色不能为空");
+        checkRoleValid(user.getRole());
         checkEmployeeNoUnique(user.getEmployeeNo(), null);
         if (user.getPhone() != null && !user.getPhone().trim().isEmpty() && !PHONE_PATTERN.matcher(user.getPhone()).matches()) {
             throw new BusinessException("手机号格式不正确");
@@ -121,15 +125,19 @@ public class UserController {
     public ApiResult<Map<String, Object>> batchAdd(@RequestBody List<SysUser> users) {
         if (users == null || users.isEmpty()) throw new BusinessException("批量新增数据不能为空");
         int success = 0;
-        List<String> errors = new ArrayList<>();
+        List<Map<String, Object>> errors = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < users.size(); i++) {
             SysUser u = users.get(i);
-            String prefix = "第" + (i + 1) + "行";
+            int rowNo = i + 1;
             try {
                 validateRequired(u.getEmployeeNo(), "工号不能为空");
+                if (u.getUsername() == null || u.getUsername().trim().isEmpty()) {
+                    u.setUsername(u.getEmployeeNo());
+                }
                 validateRequired(u.getRealName(), "姓名不能为空");
                 validateRequired(u.getRole(), "角色不能为空");
+                checkRoleValid(u.getRole());
                 if (!seen.add(u.getEmployeeNo())) throw new BusinessException("工号重复（批次内重复）");
                 checkEmployeeNoUnique(u.getEmployeeNo(), null);
                 if (u.getPhone() != null && !u.getPhone().trim().isEmpty() && !PHONE_PATTERN.matcher(u.getPhone()).matches()) {
@@ -143,7 +151,11 @@ public class UserController {
                 assignRoles(u.getId(), Collections.singletonList(u.getRole()));
                 success++;
             } catch (Exception e) {
-                errors.add(prefix + "失败：" + e.getMessage());
+                Map<String, Object> err = new HashMap<>();
+                err.put("rowNo", rowNo);
+                err.put("employeeNo", u.getEmployeeNo());
+                err.put("message", e.getMessage());
+                errors.add(err);
             }
         }
         Map<String, Object> result = new HashMap<>();
@@ -157,6 +169,10 @@ public class UserController {
     @Loggable(module = "用户管理", operationType = "Excel导入", operationDesc = "Excel批量导入用户")
     public ApiResult<Map<String, Object>> importExcel(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) throw new BusinessException("请上传Excel文件");
+        String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase(Locale.ROOT);
+        if (!filename.endsWith(".xlsx") && !filename.endsWith(".xls")) {
+            throw new BusinessException("仅支持 .xls/.xlsx 文件");
+        }
         List<SysUser> rows = parseExcel(file);
         return batchAdd(rows);
     }
@@ -165,8 +181,12 @@ public class UserController {
     @Loggable(module = "用户管理", operationType = "修改", operationDesc = "编辑用户")
     public ApiResult<Void> update(@PathVariable Long id, @RequestBody @Validated SysUser req) {
         validateRequired(req.getEmployeeNo(), "工号不能为空");
+        if (req.getUsername() == null || req.getUsername().trim().isEmpty()) {
+            req.setUsername(req.getEmployeeNo());
+        }
         validateRequired(req.getRealName(), "姓名不能为空");
         validateRequired(req.getRole(), "角色不能为空");
+        checkRoleValid(req.getRole());
         checkEmployeeNoUnique(req.getEmployeeNo(), id);
         if (req.getPhone() != null && !req.getPhone().trim().isEmpty() && !PHONE_PATTERN.matcher(req.getPhone()).matches()) {
             throw new BusinessException("手机号格式不正确");
@@ -345,31 +365,4 @@ public class UserController {
         if (role == null) throw new BusinessException("角色不合法：" + roleCode);
     }
 
-    private void validateUserFields(SysUser user, Long id) {
-        if (user == null) throw new BusinessException("用户数据不能为空");
-        if (user.getEmployeeNo() == null || user.getEmployeeNo().trim().isEmpty()) throw new BusinessException("工号不能为空");
-        if (user.getRealName() == null || user.getRealName().trim().isEmpty()) throw new BusinessException("姓名不能为空");
-        if (user.getRole() == null || user.getRole().trim().isEmpty()) throw new BusinessException("角色不能为空");
-        if (user.getPhone() != null && !user.getPhone().trim().isEmpty() && !PHONE_PATTERN.matcher(user.getPhone()).matches()) {
-            throw new BusinessException("手机号格式不正确");
-        }
-    }
-
-    private String cell(Row row, int idx) {
-        if (row.getCell(idx) == null) return "";
-        row.getCell(idx).setCellType(org.apache.poi.ss.usermodel.CellType.STRING);
-        return row.getCell(idx).getStringCellValue() == null ? "" : row.getCell(idx).getStringCellValue().trim();
-    }
-
-    private void bindUserRole(Long userId, String roleCode) {
-        if (userId == null || roleCode == null || roleCode.trim().isEmpty()) return;
-        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, roleCode));
-        if (role == null) return;
-        userRoleMapper.delete(new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
-        UserRole ur = new UserRole();
-        ur.setUserId(userId);
-        ur.setRoleId(role.getId());
-        ur.setCreateTime(LocalDateTime.now());
-        userRoleMapper.insert(ur);
-    }
 }
