@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * User 管理接口（V2）。
  */
-@RestController
+@RestController("v2UserController")
 @RequestMapping("/api/v2/user/user")
 @RequiredArgsConstructor
 public class UserController {

@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * RepairOrder 管理接口（V2）。
  */
-@RestController
+@RestController("v2RepairOrderController")
 @RequestMapping("/api/v2/repair/repairOrder")
 @RequiredArgsConstructor
 public class RepairOrderController {

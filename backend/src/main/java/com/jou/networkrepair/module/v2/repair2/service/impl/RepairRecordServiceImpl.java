@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 
-@Service
+@Service("v2RepairRecordServiceImpl")
 @RequiredArgsConstructor
 public class RepairRecordServiceImpl implements RepairRecordService {
 

@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * Role 管理接口（V2）。
  */
-@RestController
+@RestController("v2RoleController")
 @RequestMapping("/api/v2/rbac/role")
 @RequiredArgsConstructor
 public class RoleController {
