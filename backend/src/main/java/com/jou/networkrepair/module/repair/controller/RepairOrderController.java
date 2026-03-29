@@ -1,6 +1,7 @@
 package com.jou.networkrepair.module.repair.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.constant.PermissionCode;
@@ -23,8 +24,11 @@ import com.jou.networkrepair.module.log.entity.OperationLog;
 import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
 import com.jou.networkrepair.module.system.entity.BusinessLog;
 import com.jou.networkrepair.module.system.entity.FileAttachment;
+import com.jou.networkrepair.module.system.entity.RepairFeedback;
 import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
 import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
+import com.jou.networkrepair.module.system.mapper.RepairFeedbackMapper;
+import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -43,6 +47,8 @@ public class RepairOrderController {
     private final FileAttachmentMapper fileAttachmentMapper;
     private final BusinessLogMapper businessLogMapper;
     private final OperationLogMapper operationLogMapper;
+    private final RepairFeedbackMapper repairFeedbackMapper;
+    private final RepairOrderMapper repairOrderMapper;
 
     @GetMapping("/page")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
@@ -285,6 +291,30 @@ public class RepairOrderController {
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Map<String, Object>> stats(HttpServletRequest request) {
         return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @GetMapping("/feedback/low-score")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<RepairOrder>> lowScoreOrders(@RequestParam(required = false, defaultValue = "2") Integer maxScore) {
+        List<RepairFeedback> feedbacks = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
+                .le(RepairFeedback::getSatisfactionScore, maxScore)
+                .orderByDesc(RepairFeedback::getConfirmTime)
+                .last("limit 200"));
+        List<Long> orderIds = feedbacks.stream().map(RepairFeedback::getRepairOrderId).distinct().collect(java.util.stream.Collectors.toList());
+        if (orderIds.isEmpty()) return ApiResult.success(java.util.Collections.emptyList());
+        return ApiResult.success(repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .in(RepairOrder::getId, orderIds)
+                .orderByDesc(RepairOrder::getUpdateTime)));
+    }
+
+    @GetMapping("/feedback/unresolved-rework")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<RepairOrder>> unresolvedReworkOrders() {
+        return ApiResult.success(repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .eq(RepairOrder::getUserConfirmResult, "未解决")
+                .in(RepairOrder::getStatus, java.util.Arrays.asList("维修中", "申请延期中", "延期已批准", "待采购/待配件"))
+                .orderByDesc(RepairOrder::getUpdateTime)
+                .last("limit 200")));
     }
 
     @GetMapping("/status-options")

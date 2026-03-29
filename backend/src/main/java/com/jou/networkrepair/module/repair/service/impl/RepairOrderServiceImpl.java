@@ -782,6 +782,25 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             map.put("predictionWithin4hCount", 0);
             map.put("predictionWithin24hCount", 0);
         }
+
+        if ("admin".equals(role)) {
+            List<RepairFeedback> feedbacks = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
+                    .orderByDesc(RepairFeedback::getId).last("limit 1000"));
+            map.put("feedbackCount", feedbacks.size());
+            double avg = feedbacks.stream().filter(f -> f.getSatisfactionScore() != null)
+                    .mapToInt(RepairFeedback::getSatisfactionScore).average().orElse(0D);
+            map.put("satisfactionAvg", round(avg));
+            long low = feedbacks.stream().filter(f -> f.getSatisfactionScore() != null && f.getSatisfactionScore() <= 2).count();
+            map.put("lowScoreCount", low);
+            Long unresolved = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getUserConfirmResult, "未解决")
+                    .in(RepairOrder::getStatus, Arrays.asList(
+                            RepairOrderStatusEnum.IN_PROGRESS.getLabel(),
+                            RepairOrderStatusEnum.DELAY_APPLYING.getLabel(),
+                            RepairOrderStatusEnum.DELAY_APPROVED.getLabel(),
+                            RepairOrderStatusEnum.PENDING_PARTS.getLabel())));
+            map.put("unresolvedReworkCount", unresolved == null ? 0 : unresolved);
+        }
         return map;
     }
 

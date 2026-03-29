@@ -27,6 +27,11 @@
 
       <el-card shadow="never" style="margin-top:10px">
         <div>预测样本：{{ stats.predictionComparableCount || 0 }}，平均绝对误差：{{ stats.predictionAvgAbsErrorHours || 0 }}h，4h内命中：{{ stats.predictionWithin4hCount || 0 }}，24h内命中：{{ stats.predictionWithin24hCount || 0 }}</div>
+        <div v-if="isAdmin" style="margin-top:8px">
+          反馈总数：{{ stats.feedbackCount || 0 }}，满意度均分：{{ stats.satisfactionAvg || 0 }}，差评工单：{{ stats.lowScoreCount || 0 }}，未解决返修工单：{{ stats.unresolvedReworkCount || 0 }}
+          <el-button link type="danger" @click="openLowScore">查看差评工单</el-button>
+          <el-button link type="warning" @click="openUnresolved">查看未解决返修工单</el-button>
+        </div>
       </el-card>
 
       <el-table :data="list" style="margin-top: 12px">
@@ -105,6 +110,30 @@
         <el-button type="primary" @click="saveAssign">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="lowScoreDialog" title="差评工单（满意度<=2）" width="980px">
+      <el-table :data="lowScoreOrders">
+        <el-table-column prop="orderNo" label="工单号" width="180"/>
+        <el-table-column prop="deviceName" label="设备" min-width="160"/>
+        <el-table-column prop="reporterName" label="报修人" width="120"/>
+        <el-table-column prop="userConfirmResult" label="确认结果" width="110"/>
+        <el-table-column prop="satisfactionScore" label="满意度" width="90"/>
+        <el-table-column prop="feedback" label="反馈意见" min-width="220" show-overflow-tooltip/>
+        <el-table-column prop="updateTime" label="更新时间" width="180"/>
+      </el-table>
+    </el-dialog>
+
+    <el-dialog v-model="unresolvedDialog" title="未解决返修工单" width="980px">
+      <el-table :data="unresolvedOrders">
+        <el-table-column prop="orderNo" label="工单号" width="180"/>
+        <el-table-column prop="deviceName" label="设备" min-width="160"/>
+        <el-table-column prop="status" label="当前状态" width="130"/>
+        <el-table-column prop="assignMaintainerName" label="维修人员" width="120"/>
+        <el-table-column prop="userConfirmResult" label="用户确认" width="100"/>
+        <el-table-column prop="feedback" label="反馈意见" min-width="220" show-overflow-tooltip/>
+        <el-table-column prop="updateTime" label="更新时间" width="180"/>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
@@ -136,7 +165,11 @@ const recommendations = ref([])
 const dialogVisible = ref(false)
 const editMode = ref(false)
 const assignDialog = ref(false)
+const lowScoreDialog = ref(false)
+const unresolvedDialog = ref(false)
 const assignId = ref(null)
+const lowScoreOrders = ref([])
+const unresolvedOrders = ref([])
 const form = reactive({ deviceId: null, contactPhone: '', reporterDepartment: '', reportLocation: '', faultType: '', description: '', priority: '中', affectWideAreaNetwork: 0, needPurchaseParts: 0, partsDescription: '', originalExpectedFinishTime: '', remark: '' })
 const assignForm = reactive({ assignMaintainerId: null })
 
@@ -209,6 +242,16 @@ const saveAssign = async () => {
   ElMessage.success('分配成功')
   assignDialog.value = false
   await load()
+}
+
+const openLowScore = async () => {
+  lowScoreOrders.value = await getPage('/repair-orders/feedback/low-score', { maxScore: 2 })
+  lowScoreDialog.value = true
+}
+
+const openUnresolved = async () => {
+  unresolvedOrders.value = await getPage('/repair-orders/feedback/unresolved-rework')
+  unresolvedDialog.value = true
 }
 
 onMounted(async () => {

@@ -173,7 +173,7 @@ const actionButtons = computed(() => {
   if (isMaintainer.value && status === '待接单') buttons.push({ label: '接单', status: '维修人员已接单' })
   if (isMaintainer.value && status === '维修人员已接单') buttons.push({ label: '开始维修', status: '维修中' })
   if (isMaintainer.value && ['维修中', '延期已批准'].includes(status)) buttons.push({ label: '提交完工', status: '已完成', type: 'success' })
-  if (isUser.value && status === '待验收/待确认') buttons.push({ label: '确认完成', status: '已完成', type: 'success' })
+  if (isUser.value && status === '待验收/待确认') buttons.push({ label: '提交验收反馈', status: 'USER_FEEDBACK', type: 'success' })
   if (isAdmin.value && !['已关闭', '已取消'].includes(status)) buttons.push({ label: '关闭工单', status: '已关闭', type: 'warning' })
   return buttons
 })
@@ -242,11 +242,30 @@ const quickUpdate = async (btn) => {
     await loadAll()
     return
   }
-  if (btn.status === '已完成' && isUser.value) {
-    const { value } = await ElMessageBox.prompt('请输入用户反馈内容（可选）', '反馈')
-    payload.userConfirmResult = '已解决'
-    payload.feedback = value
-    payload.satisfactionScore = 5
+  if (btn.status === 'USER_FEEDBACK' && isUser.value) {
+    const { value: confirmResult } = await ElMessageBox.prompt('请输入确认结果：已解决 或 未解决', '验收确认', {
+      inputValue: '已解决'
+    })
+    if (!['已解决', '未解决'].includes((confirmResult || '').trim())) {
+      ElMessage.warning('确认结果仅支持：已解决 / 未解决')
+      return
+    }
+    const { value: scoreValue } = await ElMessageBox.prompt('请输入满意度评分（1~5）', '满意度评分', { inputValue: '5' })
+    const score = Number(scoreValue)
+    if (!Number.isInteger(score) || score < 1 || score > 5) {
+      ElMessage.warning('满意度评分必须是 1~5 的整数')
+      return
+    }
+    const { value: feedbackContent } = await ElMessageBox.prompt('请填写反馈意见', '反馈意见')
+    await putApi(`/repair-orders/${id}/feedback`, {
+      confirmResult: confirmResult.trim(),
+      satisfactionScore: score,
+      feedbackContent: feedbackContent || (confirmResult.trim() === '未解决' ? '用户反馈未解决，申请返修' : '用户确认已解决'),
+      remark: confirmResult.trim() === '未解决' ? '用户反馈未解决，退回处理流程' : '用户确认已解决'
+    })
+    ElMessage.success('反馈提交成功')
+    await loadAll()
+    return
   }
   await putApi(`/repair-orders/${id}/status`, payload)
   ElMessage.success('操作成功')
