@@ -2,19 +2,36 @@
   <div class="home-page">
     <el-row :gutter="16">
       <el-col :span="16">
-        <el-card class="intro-card" shadow="hover">
-          <h2>{{ workbench.systemName }}</h2>
-          <p>业务首页聚焦工单协同、维修调度、设备治理与服务质量闭环。</p>
-          <el-tag type="success">所属单位：{{ workbench.campusInfo }}</el-tag>
+        <el-card shadow="hover" class="hero-card">
+          <h2>{{ data.systemName }}</h2>
+          <p class="desc">{{ data.systemDesc }}</p>
+          <div class="meta">
+            <el-tag type="success">{{ data.campusInfo }}</el-tag>
+            <el-tag type="info">{{ data.networkStatus }}</el-tag>
+          </div>
+          <ul class="scenario-list">
+            <li v-for="(s, idx) in data.scenarios || []" :key="idx">{{ s }}</li>
+          </ul>
         </el-card>
       </el-col>
       <el-col :span="8">
         <el-card shadow="hover">
+          <template #header>校园网/所属单位信息</template>
+          <p>{{ data.unitMeta?.campus }}</p>
+          <p>{{ data.unitMeta?.servicePhone }}</p>
+          <p>{{ data.unitMeta?.serviceTime }}</p>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16" style="margin-top:16px">
+      <el-col :span="12">
+        <el-card shadow="hover">
           <template #header>快速入口</template>
           <div class="entry-grid">
             <el-button
-              v-for="entry in filteredEntries"
-              :key="entry.name"
+              v-for="entry in visibleEntries"
+              :key="entry.path + entry.name"
               type="primary"
               plain
               @click="router.push(entry.path)">
@@ -23,231 +40,132 @@
           </div>
         </el-card>
       </el-col>
+      <el-col :span="12">
+        <el-card shadow="hover">
+          <template #header>待办工单</template>
+          <el-empty v-if="!todoItems.length" description="暂无待办" />
+          <el-row v-else :gutter="12">
+            <el-col :span="12" v-for="item in todoItems" :key="item.key">
+              <div class="metric-card">
+                <div class="label">{{ item.label }}</div>
+                <div class="value">{{ item.value }}</div>
+              </div>
+            </el-col>
+          </el-row>
+        </el-card>
+      </el-col>
     </el-row>
 
-    <el-row :gutter="16" style="margin-top:16px" v-if="isAdmin">
-      <el-col :span="8"><el-card>设备总数<div class="num">{{ deviceStats.total || 0 }}</div></el-card></el-col>
-      <el-col :span="8"><el-card>正常设备数<div class="num">{{ deviceStats.normal || 0 }}</div></el-card></el-col>
-      <el-col :span="8"><el-card>故障设备数<div class="num">{{ deviceStats.fault || 0 }}</div></el-card></el-col>
+    <el-row :gutter="16" style="margin-top:16px">
+      <el-col :span="24">
+        <el-card shadow="hover">
+          <template #header>统计摘要</template>
+          <el-row :gutter="12">
+            <el-col :span="6" v-for="item in statItems" :key="item.key">
+              <div class="metric-card stat">
+                <div class="label">{{ item.label }}</div>
+                <div class="value">{{ item.value }}</div>
+              </div>
+            </el-col>
+          </el-row>
+        </el-card>
+      </el-col>
     </el-row>
 
-    <el-row :gutter="16" style="margin-top:16px" v-if="isAdmin">
-      <el-col :span="8"><el-card><div class="chart-title">设备状态分布</div><div ref="deviceChartRef" class="chart"/></el-card></el-col>
-      <el-col :span="8"><el-card><div class="chart-title">工单趋势</div><div ref="trendChartRef" class="chart"/></el-card></el-col>
-      <el-col :span="8"><el-card><div class="chart-title">完成率统计</div><div ref="rateChartRef" class="chart"/></el-card></el-col>
-    </el-row>
-
-    <el-card style="margin-top:16px">
-      <template #header>
-        <div class="notice-head">
-          <span>公告</span>
-          <span class="notice-tip">公告数据实时来自后端</span>
-          <el-select v-if="isAdmin" v-model="noticeQuery.status" size="small" style="width:120px" @change="loadNotices">
-            <el-option label="全部" value="" />
-            <el-option label="草稿" value="DRAFT" />
-            <el-option label="上线" value="ONLINE" />
-            <el-option label="下线" value="OFFLINE" />
-          </el-select>
-          <el-select v-model="noticeQuery.sortBy" size="small" style="width:140px" @change="loadNotices">
-            <el-option label="按发布时间" value="publishTime" />
-            <el-option label="按创建时间" value="createTime" />
-          </el-select>
-          <el-button v-if="isAdmin" type="primary" size="small" @click="openAdd">发布公告</el-button>
-        </div>
-      </template>
-      <el-empty v-if="!notices.length" description="暂无公告" />
-      <el-table v-else :data="notices">
-        <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
-        <el-table-column label="摘要" min-width="300">
-          <template #default="s">{{ summary(s.row.content) }}</template>
-        </el-table-column>
-        <el-table-column prop="publishTime" label="发布时间" width="180" />
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="260">
-          <template #default="s">
-            <el-button link @click="viewNotice(s.row)">详情</el-button>
-            <template v-if="isAdmin">
-              <el-button link @click="editNotice(s.row)">编辑</el-button>
-              <el-button link @click="switchStatus(s.row)">{{ s.row.status === 'ONLINE' ? '下线' : '上线' }}</el-button>
-              <el-button link type="danger" @click="deleteNotice(s.row)">删除</el-button>
-            </template>
-          </template>
-        </el-table-column>
-      </el-table>
+    <el-card shadow="hover" style="margin-top:16px">
+      <template #header>当前通知公告</template>
+      <el-empty v-if="!data.notices?.length" description="暂无公告" />
+      <el-timeline v-else>
+        <el-timeline-item v-for="n in data.notices" :key="n.id" :timestamp="n.publishTime || n.createTime">
+          <el-card shadow="never">
+            <h4>{{ n.title }}</h4>
+            <p>{{ summary(n.content) }}</p>
+          </el-card>
+        </el-timeline-item>
+      </el-timeline>
     </el-card>
-
-    <el-dialog v-model="detailDialog" title="公告详情" width="700px">
-      <h3>{{ detail.title }}</h3>
-      <p style="color:#909399">状态：{{ detail.status }} ｜ 发布时间：{{ detail.publishTime || '-' }}</p>
-      <div class="notice-content">{{ detail.content }}</div>
-    </el-dialog>
-
-    <el-dialog v-model="editDialog" :title="noticeForm.id ? '编辑公告' : '发布公告'" width="700px">
-      <el-form :model="noticeForm" label-width="80px">
-        <el-form-item label="标题"><el-input v-model="noticeForm.title" /></el-form-item>
-        <el-form-item label="内容"><el-input v-model="noticeForm.content" type="textarea" :rows="7" /></el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="noticeForm.status">
-            <el-option label="草稿" value="DRAFT" />
-            <el-option label="上线" value="ONLINE" />
-            <el-option label="下线" value="OFFLINE" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editDialog=false">取消</el-button>
-        <el-button type="primary" @click="saveNotice">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { reactive, onMounted, ref, nextTick, computed } from 'vue'
-import { delApi, getPage, postApi, putApi } from '../../api'
+import { computed, onMounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '../../stores/user'
-import * as echarts from 'echarts'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { getPage } from '../../api'
 
-const user = useUserStore()
-const isAdmin = computed(() => user.userInfo.role === 'admin')
-const orderStats = reactive({})
-const deviceStats = reactive({})
-const notices = ref([])
-const noticeQuery = reactive({ status: "", sortBy: "publishTime" })
-const deviceChartRef = ref()
-const trendChartRef = ref()
-const rateChartRef = ref()
+const router = useRouter()
+const store = useUserStore()
 
-const detailDialog = ref(false)
-const detail = reactive({})
+const data = reactive({
+  systemName: '',
+  systemDesc: '',
+  campusInfo: '',
+  networkStatus: '',
+  unitMeta: {},
+  scenarios: [],
+  quickEntries: [],
+  todo: {},
+  stats: {},
+  notices: []
+})
 
-const editDialog = ref(false)
-const noticeForm = reactive({ id: null, title: '', content: '', status: 'DRAFT' })
-
-const renderCharts = () => {
-  const d = echarts.init(deviceChartRef.value)
-  d.setOption({ tooltip: {}, series: [{ type: 'pie', data: [{ name: '正常', value: deviceStats.normal || 0 }, { name: '故障', value: deviceStats.fault || 0 }], radius: '65%' }] })
-  const t = echarts.init(trendChartRef.value)
-  t.setOption({ xAxis: { type: 'category', data: ['待处理', '处理中', '已完成'] }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: [orderStats.pending || 0, orderStats.processing || 0, orderStats.finished || 0] }] })
-  const r = echarts.init(rateChartRef.value)
-  const finishRate = (orderStats.total ? ((orderStats.finished || 0) / orderStats.total * 100) : 0).toFixed(1)
-  r.setOption({ series: [{ type: 'gauge', center: ['50%', '65%'], radius: '78%', min: 0, max: 100, axisLine: { lineStyle: { width: 14 } }, progress: { show: true, width: 14 }, splitLine: { length: 10, distance: -16 }, axisTick: { distance: -18, length: 5 }, axisLabel: { distance: 16, fontSize: 10 }, title: { offsetCenter: [0, '45%'], fontSize: 14 }, detail: { fontSize: 24, offsetCenter: [0, '68%'], formatter: v => `${v}%` }, data: [{ value: Number(finishRate), name: '完成率' }] }] })
+const todoLabelMap = {
+  pendingApprove: '待审核工单',
+  pendingAssign: '待分配工单',
+  processing: '处理中工单',
+  pendingAccept: '待接单',
+  inProgress: '维修中',
+  pendingAcceptance: '待验收',
+  myOpenOrders: '我的未完成工单',
+  myPendingConfirm: '待我确认'
 }
 
-const loadNotices = async () => {
-  if (isAdmin.value) {
-    const r = await getPage('/notices/page', { current: 1, size: 10, sortBy: noticeQuery.sortBy, status: noticeQuery.status || undefined })
-    notices.value = r.records || []
-    return
-  }
-  notices.value = await getPage('/notices/home', { limit: 8 })
+const statLabelMap = {
+  deviceTotal: '设备总数',
+  deviceFault: '故障设备数',
+  orderTotal: '工单总数',
+  orderFinished: '已完成工单',
+  myAssigned: '分配给我',
+  myFinished: '我已完成',
+  myReported: '我发起的工单'
 }
 
-const summary = content => (content || '').slice(0, 70) + ((content || '').length > 70 ? '...' : '')
-const viewNotice = row => {
-  Object.assign(detail, row)
-  detailDialog.value = true
-}
+const visibleEntries = computed(() => {
+  const entries = data.quickEntries || []
+  return entries.filter(e => !e.perm || store.hasPerm(e.perm))
+})
 
-const openAdd = () => {
-  Object.assign(noticeForm, { id: null, title: '', content: '', status: 'DRAFT' })
-  editDialog.value = true
-}
+const todoItems = computed(() => Object.keys(data.todo || {}).map(key => ({
+  key,
+  label: todoLabelMap[key] || key,
+  value: data.todo[key]
+})))
 
-const editNotice = row => {
-  Object.assign(noticeForm, { ...row })
-  editDialog.value = true
-}
+const statItems = computed(() => Object.keys(data.stats || {}).map(key => ({
+  key,
+  label: statLabelMap[key] || key,
+  value: data.stats[key]
+})))
 
-const saveNotice = async () => {
-  if (noticeForm.id) await putApi(`/notices/${noticeForm.id}`, noticeForm)
-  else await postApi('/notices', noticeForm)
-  ElMessage.success('公告保存成功')
-  editDialog.value = false
-  await loadNotices()
+const summary = content => {
+  const text = content || ''
+  return text.length > 120 ? `${text.slice(0, 120)}...` : text
 }
-
-const switchStatus = async row => {
-  const next = row.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
-  await putApi(`/notices/${row.id}/status`, { status: next })
-  ElMessage.success('公告状态已更新')
-  await loadNotices()
-}
-
-const deleteNotice = async row => {
-  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
-  await delApi(`/notices/${row.id}`)
-  ElMessage.success('公告已删除')
-  await loadNotices()
-}
-
-const editNotice = row => {
-  Object.assign(noticeForm, { ...row })
-  editDialog.value = true
-}
-
-const saveNotice = async () => {
-  if (noticeForm.id) await putApi(`/notices/${noticeForm.id}`, noticeForm)
-  else await postApi('/notices', noticeForm)
-  ElMessage.success('公告保存成功')
-  editDialog.value = false
-  await loadNotices()
-}
-
-const switchStatus = async row => {
-  const next = row.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
-  await putApi(`/notices/${row.id}/status`, { status: next })
-  ElMessage.success('公告状态已更新')
-  await loadNotices()
-}
-
-const deleteNotice = async row => {
-  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
-  await delApi(`/notices/${row.id}`)
-  ElMessage.success('公告已删除')
-  await loadNotices()
-}
-
-const deleteNotice = async row => {
-  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
-  await delApi(`/notices/${row.id}`)
-  ElMessage.success('公告已删除')
-  await loadNotices()
-}
-
-const switchStatus = async row => {
-  const next = row.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
-  await putApi(`/notices/${row.id}/status`, { status: next })
-  ElMessage.success('公告状态已更新')
-  await loadNotices()
-}
-
-const deleteNotice = async row => {
-  await ElMessageBox.confirm('确认删除该公告吗？', '删除确认')
-  await delApi(`/notices/${row.id}`)
-  ElMessage.success('公告已删除')
-  await loadNotices()
-}
-
-const todoItems = computed(() => Object.keys(workbench.todo || {}).map(key => ({ key, label: todoLabelMap[key] || key, value: workbench.todo[key] })))
-const statItems = computed(() => Object.keys(workbench.stats || {}).map(key => ({ key, label: statLabelMap[key] || key, value: workbench.stats[key] })))
 
 onMounted(async () => {
-  Object.assign(orderStats, await getPage('/repair-orders/statistics', {}))
-  await loadNotices()
-  if (isAdmin.value) {
-    Object.assign(deviceStats, await getPage('/devices/statistics', {}))
-    await nextTick(); renderCharts()
-  }
+  const res = await getPage('/portal/workbench', {})
+  Object.assign(data, res)
 })
 </script>
 
 <style scoped>
-.num { font-size: 28px; font-weight: 700; color: #409eff; margin-top: 8px }
-.chart { height: 220px }
-.chart-title { font-weight: 600; margin-bottom: 8px }
-.notice-head { display:flex; align-items:center; gap:12px }
-.notice-tip { color:#909399; font-size:12px; flex:1 }
-.notice-content { white-space: pre-wrap; line-height: 1.8; }
+.home-page { display: flex; flex-direction: column; gap: 12px; }
+.hero-card .desc { color: #606266; line-height: 1.7; }
+.meta { display: flex; gap: 8px; margin: 12px 0; }
+.scenario-list { margin: 0; padding-left: 20px; color: #606266; display: grid; gap: 6px; }
+.entry-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.metric-card { background: #f5f7fa; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+.metric-card .label { color: #909399; font-size: 13px; }
+.metric-card .value { color: #303133; font-size: 24px; font-weight: 700; margin-top: 6px; }
+.metric-card.stat { min-height: 90px; }
 </style>

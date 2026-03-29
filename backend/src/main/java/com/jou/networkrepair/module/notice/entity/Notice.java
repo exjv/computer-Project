@@ -11,11 +11,14 @@ public class Notice {
     private Long id;
     private String title;
     private String content;
-    /** DRAFT/ONLINE/OFFLINE */
+
+    /** DRAFT/ONLINE/OFFLINE/PUBLISHED */
     private String status;
+
     private LocalDateTime publishTime;
+    private LocalDateTime expireTime;
     private Long publisherId;
-    private String status;
+    private Integer topFlag;
     private Integer sortNo;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

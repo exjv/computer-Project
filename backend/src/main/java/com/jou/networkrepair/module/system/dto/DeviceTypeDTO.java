@@ -8,9 +8,14 @@ import javax.validation.constraints.NotBlank;
 public class DeviceTypeDTO {
     @NotBlank(message = "类型编码不能为空")
     private String typeCode;
+
     @NotBlank(message = "类型名称不能为空")
     private String typeName;
+
     private Integer sortNo;
-    private String status;
+
+    /** 1启用 0禁用 */
+    private Integer status;
+
     private String remark;
 }

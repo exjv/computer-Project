@@ -12,7 +12,7 @@ public class DeviceType {
     private String typeCode;
     private String typeName;
     private Integer sortNo;
-    private String status;
+    private Integer status;
     private String remark;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

@@ -1,46 +1,41 @@
 package com.jou.networkrepair.module.repair.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.jou.networkrepair.module.log.entity.OperationLog;
-import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
+import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
-import com.jou.networkrepair.module.repair.dto.RepairOrderActionDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAttachmentDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAuditDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCloseDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderDelayApproveDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderFeedbackDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
-import com.jou.networkrepair.module.repair.entity.RepairRecord;
-import com.jou.networkrepair.module.repair.mapper.RepairRecordMapper;
-import com.jou.networkrepair.module.system.entity.BusinessLog;
-import com.jou.networkrepair.module.system.entity.FileAttachment;
-import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
+import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
-import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
 import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
+import com.jou.networkrepair.module.log.entity.OperationLog;
+import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
+import com.jou.networkrepair.module.system.entity.BusinessLog;
+import com.jou.networkrepair.module.system.entity.FileAttachment;
+import com.jou.networkrepair.module.system.entity.RepairFeedback;
+import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
+import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
+import com.jou.networkrepair.module.system.mapper.RepairFeedbackMapper;
+import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,11 +44,16 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RepairOrderController {
     private final RepairOrderService repairOrderService;
+    private final FileAttachmentMapper fileAttachmentMapper;
+    private final BusinessLogMapper businessLogMapper;
     private final OperationLogMapper operationLogMapper;
+    private final RepairFeedbackMapper repairFeedbackMapper;
+    private final RepairOrderMapper repairOrderMapper;
 
     @GetMapping("/page")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
-    public ApiResult<Page<RepairOrder>> page(@RequestParam Long current, @RequestParam Long size,
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    public ApiResult<Page<RepairOrder>> page(@RequestParam Long current,
+                                             @RequestParam Long size,
                                              @RequestParam(required = false) String status,
                                              @RequestParam(required = false) String title,
                                              @RequestParam(required = false) String orderNo,
@@ -66,20 +66,24 @@ public class RepairOrderController {
                                              @RequestParam(required = false) String reportTimeStart,
                                              @RequestParam(required = false) String reportTimeEnd,
                                              @RequestParam(required = false, defaultValue = "id") String sortField,
-                                             @RequestParam(required = false, defaultValue = "desc") String sortOrder) {
-        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, deviceType, faultType,
-                assignMaintainerId, applyDelay, needPurchaseParts,
-                parseDateTime(reportTimeStart), parseDateTime(reportTimeEnd), sortField, sortOrder));
+                                             @RequestParam(required = false, defaultValue = "desc") String sortOrder,
+                                             HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, deviceType, faultType, assignMaintainerId, applyDelay, needPurchaseParts,
+                parseDateTime(reportTimeStart), parseDateTime(reportTimeEnd), sortField, sortOrder,
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @GetMapping("/my")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
-    public ApiResult<Page<RepairOrder>> my(@RequestParam Long current, @RequestParam Long size,
+    public ApiResult<Page<RepairOrder>> my(@RequestParam Long current,
+                                           @RequestParam Long size,
                                            @RequestParam(required = false) String status,
+                                           @RequestParam(required = false) String title,
                                            @RequestParam(required = false) String orderNo,
                                            @RequestParam(required = false) String priority,
                                            @RequestParam(required = false) String deviceType,
                                            @RequestParam(required = false) String faultType,
+                                           @RequestParam(required = false) Long assignMaintainerId,
                                            @RequestParam(required = false) Integer applyDelay,
                                            @RequestParam(required = false) Integer needPurchaseParts,
                                            @RequestParam(required = false) String reportTimeStart,
@@ -87,76 +91,183 @@ public class RepairOrderController {
                                            @RequestParam(required = false, defaultValue = "id") String sortField,
                                            @RequestParam(required = false, defaultValue = "desc") String sortOrder,
                                            HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
-        String role = (String) request.getAttribute("role");
-        return ApiResult.success(repairOrderService.myPage(current, size, status, orderNo, priority, deviceType, faultType, applyDelay, needPurchaseParts,
-                parseDateTime(reportTimeStart), parseDateTime(reportTimeEnd), userId, role, sortField, sortOrder));
+        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, deviceType, faultType, assignMaintainerId, applyDelay, needPurchaseParts,
+                parseDateTime(reportTimeStart), parseDateTime(reportTimeEnd), sortField, sortOrder,
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
-    public ApiResult<RepairOrder> get(@PathVariable Long id, HttpServletRequest request) {
+    public ApiResult<RepairOrder> detail(@PathVariable Long id, HttpServletRequest request) {
         return ApiResult.success(repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @PostMapping
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_CREATE + "')")
-    @Loggable(module = "工单管理", operationType = "新增", operationDesc = "提交报修工单")
-    public ApiResult<Void> add(@RequestBody @Validated RepairOrderCreateDTO dto, HttpServletRequest request) {
+    @Loggable(module = "工单管理", operationType = "新增", operationDesc = "提交工单")
+    public ApiResult<Void> create(@RequestBody @Validated RepairOrderCreateDTO dto, HttpServletRequest request) {
         repairOrderService.create(dto, (Long) request.getAttribute("userId"));
         return ApiResult.success("提交成功", null);
     }
 
+    @PostMapping("/apply")
+    @PreAuthorize("hasRole('USER')")
+    public ApiResult<Void> apply(@RequestBody @Validated RepairOrderCreateDTO dto, HttpServletRequest request) {
+        repairOrderService.create(dto, (Long) request.getAttribute("userId"));
+        return ApiResult.success("报修申请提交成功", null);
+    }
+
     @PutMapping("/{id}")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_APPROVE + "')")
-    @Loggable(module = "工单管理", operationType = "修改", operationDesc = "编辑工单")
-    public ApiResult<Void> update(@PathVariable Long id, @RequestBody RepairOrder req) {
-        repairOrderService.update(id, req);
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    public ApiResult<Void> update(@PathVariable Long id, @RequestBody RepairOrder req, HttpServletRequest request) {
+        repairOrderService.update(id, req, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("修改成功", null);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
-    @Loggable(module = "工单管理", operationType = "删除", operationDesc = "删除工单")
-    public ApiResult<Void> delete(@PathVariable Long id) {
-        repairOrderService.delete(id);
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    public ApiResult<Void> delete(@PathVariable Long id, HttpServletRequest request) {
+        repairOrderService.delete(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("删除成功", null);
     }
 
-
-    @GetMapping("/{id}/recommend-maintainers")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ApiResult<List<com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO>> recommendMaintainers(@PathVariable Long id) {
-        return ApiResult.success(repairOrderService.recommendMaintainers(id));
-    }
-
-    @PutMapping("/{id}/assign")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ApiResult<List<com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO>> recommendMaintainers(@PathVariable Long id) {
-        return ApiResult.success(repairOrderService.recommendMaintainers(id));
+    @PutMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('USER')")
+    public ApiResult<Void> cancel(@PathVariable Long id,
+                                  @RequestBody(required = false) Map<String, String> body,
+                                  HttpServletRequest request) {
+        String remark = body == null ? null : body.get("remark");
+        repairOrderService.cancelByUser(id, remark, (Long) request.getAttribute("userId"));
+        return ApiResult.success("撤销成功", null);
     }
 
     @PutMapping("/{id}/assign")
     @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
     @Loggable(module = "工单管理", operationType = "分配", operationDesc = "分配维修人员")
     public ApiResult<Void> assign(@PathVariable Long id, @RequestBody @Validated RepairOrderAssignDTO dto, HttpServletRequest request) {
-        repairOrderService.assign(id, dto, (Long) request.getAttribute("userId"));
+        repairOrderService.assign(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("分配成功", null);
     }
 
-    @PutMapping("/{id}/action")
+    @GetMapping("/{id}/assign-recommendations")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<AssignmentRecommendationVO>> assignRecommendations(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.recommendAssignments(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @GetMapping("/{id}/estimate-finish-time")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
-    @Loggable(module = "工单流程", operationType = "流转", operationDesc = "执行工单流转动作")
-    public ApiResult<Void> action(@PathVariable Long id, @RequestBody @Validated RepairOrderActionDTO dto, HttpServletRequest request) {
-        repairOrderService.action(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
-        return ApiResult.success("操作成功", null);
+    public ApiResult<RepairEstimateVO> estimateFinishTime(@PathVariable Long id, HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.estimateFinishTime(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @PutMapping("/{id}/audit")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_APPROVE + "')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResult<Void> audit(@PathVariable Long id, @RequestBody @Validated RepairOrderAuditDTO dto, HttpServletRequest request) {
-        repairOrderService.audit(id, dto, (Long) request.getAttribute("userId"));
+        repairOrderService.auditByAdmin(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success("审核处理成功", null);
+    }
+
+    @PutMapping("/{id}/reassign")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<Void> reassign(@PathVariable Long id, @RequestBody @Validated RepairOrderReassignDTO dto, HttpServletRequest request) {
+        repairOrderService.reassignByAdmin(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("改派成功", null);
+    }
+
+    @PutMapping("/{id}/delay-approve")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<Void> approveDelay(@PathVariable Long id, @RequestBody @Validated RepairOrderDelayApproveDTO dto, HttpServletRequest request) {
+        repairOrderService.approveDelayByAdmin(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("延期审批完成", null);
+    }
+
+    @PutMapping("/{id}/close")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<Void> close(@PathVariable Long id, @RequestBody @Validated RepairOrderCloseDTO dto, HttpServletRequest request) {
+        repairOrderService.closeByAdmin(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("工单关闭成功", null);
+    }
+
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    @Loggable(module = "工单流程", operationType = "状态更新", operationDesc = "更新工单状态")
+    public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody @Validated RepairOrderStatusDTO dto, HttpServletRequest request) {
+        repairOrderService.updateStatus(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("状态更新成功", null);
+    }
+
+    @PutMapping("/{id}/feedback")
+    @PreAuthorize("hasRole('USER')")
+    public ApiResult<Void> feedback(@PathVariable Long id, @RequestBody @Validated RepairOrderFeedbackDTO dto, HttpServletRequest request) {
+        repairOrderService.feedbackByUser(id, dto, (Long) request.getAttribute("userId"));
+        return ApiResult.success("反馈提交成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/accept")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerAccept(@PathVariable Long id,
+                                            @RequestBody(required = false) Map<String, String> body,
+                                            HttpServletRequest request) {
+        repairOrderService.maintainerAccept(id, body == null ? null : body.get("remark"),
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("接单成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/reject")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerReject(@PathVariable Long id,
+                                            @RequestBody Map<String, String> body,
+                                            HttpServletRequest request) {
+        repairOrderService.maintainerReject(id, body == null ? null : body.get("reason"),
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("拒单成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/start")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerStart(@PathVariable Long id,
+                                           @RequestBody(required = false) Map<String, String> body,
+                                           HttpServletRequest request) {
+        repairOrderService.maintainerStart(id, body == null ? null : body.get("remark"),
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("开始维修成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/progress")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerProgress(@PathVariable Long id,
+                                              @RequestBody @Validated RepairOrderStatusDTO dto,
+                                              HttpServletRequest request) {
+        repairOrderService.maintainerUpdateProgress(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("进度更新成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/delay-apply")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerDelayApply(@PathVariable Long id,
+                                                @RequestBody @Validated RepairOrderStatusDTO dto,
+                                                HttpServletRequest request) {
+        repairOrderService.maintainerApplyDelay(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("延期申请提交成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/parts-apply")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerPartsApply(@PathVariable Long id,
+                                                @RequestBody @Validated RepairOrderStatusDTO dto,
+                                                HttpServletRequest request) {
+        repairOrderService.maintainerApplyParts(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("配件申请提交成功", null);
+    }
+
+    @PutMapping("/{id}/maintainer/finish")
+    @PreAuthorize("hasRole('MAINTAINER')")
+    public ApiResult<Void> maintainerFinish(@PathVariable Long id,
+                                            @RequestBody @Validated RepairOrderStatusDTO dto,
+                                            HttpServletRequest request) {
+        repairOrderService.maintainerFinish(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        return ApiResult.success("完工提交成功", null);
     }
 
     @GetMapping("/{id}/flows")
@@ -165,24 +276,21 @@ public class RepairOrderController {
         return ApiResult.success(repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
-
     @GetMapping("/{id}/records")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Map<String, Object>> records(@PathVariable Long id, HttpServletRequest request) {
-        Map<String, Object> map = new HashMap<>();
+        RepairOrder order = repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        Map<String, Object> map = new java.util.HashMap<>();
         map.put("flows", repairOrderService.flows(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
-        map.put("logs", operationLogMapper.selectList(new LambdaQueryWrapper<OperationLog>()
-                .like(OperationLog::getRequestUrl, "/repair-orders/" + id)
+        map.put("businessLogs", businessLogMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<BusinessLog>()
+                .and(w -> w.eq(BusinessLog::getBusinessType, "REPAIR_ORDER").or().eq(BusinessLog::getBizType, "REPAIR_ORDER"))
+                .and(w -> w.eq(BusinessLog::getBusinessNo, order.getOrderNo()).or().eq(BusinessLog::getBizId, id))
+                .orderByAsc(BusinessLog::getId)));
+        map.put("operationLogs", operationLogMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OperationLog>()
+                .and(w -> w.like(OperationLog::getRequestUrl, "/repair-orders/" + id)
+                        .or().like(OperationLog::getRequestParams, "\"id\":" + id))
                 .orderByDesc(OperationLog::getOperationTime)));
         return ApiResult.success(map);
-    }
-
-    @PutMapping("/{id}/status")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_PROGRESS + "') || @permissionService.hasPermission('" + PermissionCode.REPAIR_SUPERVISE + "')")
-    @Loggable(module = "工单管理", operationType = "状态更新", operationDesc = "更新工单状态")
-    public ApiResult<Void> updateStatus(@PathVariable Long id, @RequestBody @Validated RepairOrderStatusDTO dto, HttpServletRequest request) {
-        repairOrderService.updateStatus(id, dto, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
-        return ApiResult.success("状态更新成功", null);
     }
 
     @GetMapping("/statistics")
@@ -192,158 +300,74 @@ public class RepairOrderController {
     }
 
     @GetMapping("/analytics")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
-    public ApiResult<Map<String, Object>> analytics(@RequestParam(required = false, defaultValue = "month") String rangeType,
-                                                    @RequestParam(required = false) String start,
-                                                    @RequestParam(required = false) String end) {
-        return ApiResult.success(repairOrderService.analytics(rangeType, start, end));
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    public ApiResult<Map<String, Object>> analytics(@RequestParam(required = false, defaultValue = "month") String dimension,
+                                                    @RequestParam(required = false) String startTime,
+                                                    @RequestParam(required = false) String endTime,
+                                                    HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.analytics(dimension, parseDateTime(startTime), parseDateTime(endTime),
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
-    @GetMapping("/feedback/statistics")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
-    public ApiResult<Map<String, Object>> feedbackStats() {
-        return ApiResult.success(repairOrderService.feedbackStats());
+    @GetMapping("/feedback/low-score")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<RepairOrder>> lowScoreOrders(@RequestParam(required = false, defaultValue = "2") Integer maxScore) {
+        List<RepairFeedback> feedbacks = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
+                .le(RepairFeedback::getSatisfactionScore, maxScore)
+                .orderByDesc(RepairFeedback::getConfirmTime)
+                .last("limit 200"));
+        List<Long> orderIds = feedbacks.stream().map(RepairFeedback::getRepairOrderId).distinct().collect(java.util.stream.Collectors.toList());
+        if (orderIds.isEmpty()) return ApiResult.success(java.util.Collections.emptyList());
+        return ApiResult.success(repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .in(RepairOrder::getId, orderIds)
+                .orderByDesc(RepairOrder::getUpdateTime)));
     }
 
-    @GetMapping("/feedback/low-satisfaction")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
-    public ApiResult<Page<Map<String, Object>>> lowSatisfactionOrders(@RequestParam Long current,
-                                                                      @RequestParam Long size,
-                                                                      @RequestParam(required = false, defaultValue = "2") Integer threshold) {
-        return ApiResult.success(repairOrderService.lowSatisfactionOrders(current, size, threshold));
-    }
-
-    @GetMapping("/feedback/unresolved")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
-    public ApiResult<Page<Map<String, Object>>> unresolvedFeedbackOrders(@RequestParam Long current,
-                                                                         @RequestParam Long size) {
-        return ApiResult.success(repairOrderService.unresolvedFeedbackOrders(current, size));
+    @GetMapping("/feedback/unresolved-rework")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResult<List<RepairOrder>> unresolvedReworkOrders() {
+        return ApiResult.success(repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                .eq(RepairOrder::getUserConfirmResult, "未解决")
+                .in(RepairOrder::getStatus, java.util.Arrays.asList("维修中", "申请延期中", "延期已批准", "待采购/待配件"))
+                .orderByDesc(RepairOrder::getUpdateTime)
+                .last("limit 200")));
     }
 
     @GetMapping("/status-options")
     public ApiResult<List<String>> statusOptions() {
-        return ApiResult.success(com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum.labels());
-    }
-
-    @PostMapping("/auto-dispatch")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
-    @Loggable(module = "工单管理", operationType = "自动分配", operationDesc = "执行工单自动分配算法")
-    public ApiResult<Map<String, Object>> autoDispatch() {
-        List<DispatchResultVO> assignedList = repairOrderService.autoDispatch();
-        Map<String, Object> data = new HashMap<>();
-        data.put("count", assignedList.size());
-        data.put("assignedList", assignedList);
-        return ApiResult.success("自动分配完成", data);
-    }
-
-    @GetMapping("/{id}/assign-recommendations")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_ASSIGN + "')")
-    public ApiResult<List<AssignmentRecommendationVO>> recommendMaintainers(@PathVariable Long id, HttpServletRequest request) {
-        return ApiResult.success(repairOrderService.recommendMaintainers(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
-    }
-
-    @GetMapping("/{id}/estimate-finish-time")
-    public ApiResult<RepairEstimateVO> estimateFinishTime(@PathVariable Long id, HttpServletRequest request) {
-        return ApiResult.success(repairOrderService.estimateFinishTime(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+        return ApiResult.success(RepairOrderStatusEnum.labels());
     }
 
     @GetMapping("/{id}/attachments")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<List<FileAttachment>> attachments(@PathVariable Long id, HttpServletRequest request) {
         repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
         return ApiResult.success(fileAttachmentMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<FileAttachment>()
-                .eq(FileAttachment::getBusinessType, "REPAIR_ORDER")
-                .eq(FileAttachment::getBusinessId, id)
+                .and(w -> w.eq(FileAttachment::getBusinessType, "REPAIR_ORDER").or().eq(FileAttachment::getBizType, "REPAIR_ORDER"))
+                .and(w -> w.eq(FileAttachment::getBusinessId, id).or().eq(FileAttachment::getBizId, id))
                 .orderByDesc(FileAttachment::getId)));
     }
 
     @PostMapping("/{id}/attachments")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Void> addAttachment(@PathVariable Long id, @RequestBody @Validated RepairOrderAttachmentDTO dto, HttpServletRequest request) {
-        repairOrderService.detail(id, (Long) request.getAttribute("userId"), (String) request.getAttribute("role"));
+        Long userId = (Long) request.getAttribute("userId");
+        repairOrderService.detail(id, userId, (String) request.getAttribute("role"));
         FileAttachment attachment = new FileAttachment();
         attachment.setBusinessType("REPAIR_ORDER");
         attachment.setBusinessId(id);
+        attachment.setBizType("REPAIR_ORDER");
+        attachment.setBizId(id);
         attachment.setFileName(dto.getFileName());
         attachment.setFileUrl(dto.getFileUrl());
         attachment.setFileType(dto.getFileType());
-        attachment.setUploaderId((Long) request.getAttribute("userId"));
-        attachment.setUploadTime(java.time.LocalDateTime.now());
+        attachment.setUploaderId(userId);
+        attachment.setUploadTime(LocalDateTime.now());
         attachment.setRemark(dto.getRemark());
+        attachment.setCreateTime(LocalDateTime.now());
+        attachment.setUpdateTime(LocalDateTime.now());
         fileAttachmentMapper.insert(attachment);
         return ApiResult.success("上传记录成功", null);
-    }
-
-    @GetMapping("/exports/statistics-excel")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
-    @Loggable(module = "工单管理", operationType = "导出", operationDesc = "导出工单统计报表")
-    public void exportStatisticsExcel(@RequestParam(required = false, defaultValue = "month") String rangeType,
-                                      @RequestParam(required = false) String start,
-                                      @RequestParam(required = false) String end,
-                                      HttpServletResponse response) throws Exception {
-        Map<String, Object> analytics = repairOrderService.analytics(rangeType, start, end);
-        Workbook wb = new XSSFWorkbook();
-        Sheet summary = wb.createSheet("工单统计汇总");
-        int idx = 0;
-        idx = writeRow(summary, idx, "统计维度", String.valueOf(analytics.get("rangeType")));
-        idx = writeRow(summary, idx, "统计开始", String.valueOf(analytics.get("rangeStart")));
-        idx = writeRow(summary, idx, "统计结束", String.valueOf(analytics.get("rangeEnd")));
-        idx = writeRow(summary, idx, "报修数量", String.valueOf(analytics.get("repairCount")));
-        idx = writeRow(summary, idx, "已完成工单", String.valueOf(analytics.get("finishedCount")));
-        idx = writeRow(summary, idx, "未完成工单", String.valueOf(analytics.get("unfinishedCount")));
-        idx = writeRow(summary, idx, "平均维修时长(小时)", String.valueOf(analytics.get("avgRepairHours")));
-        idx = writeRow(summary, idx, "延期工单占比(%)", String.valueOf(analytics.get("delayOrderRatio")));
-        idx = writeRow(summary, idx, "配件采购工单占比(%)", String.valueOf(analytics.get("partsPurchaseRatio")));
-
-        Sheet trend = wb.createSheet("报修趋势");
-        writeHeader(trend, "时间桶", "报修数量", "已完成数量");
-        List<Map<String, Object>> trendList = (List<Map<String, Object>>) analytics.get("timeTrend");
-        if (trendList != null) {
-            int rowNo = 1;
-            for (Map<String, Object> v : trendList) {
-                Row row = trend.createRow(rowNo++);
-                row.createCell(0).setCellValue(String.valueOf(v.get("bucket")));
-                row.createCell(1).setCellValue(String.valueOf(v.get("reportCount")));
-                row.createCell(2).setCellValue(String.valueOf(v.get("finishedCount")));
-            }
-        }
-        writeWorkbook(response, wb, "order_statistics_report.xlsx");
-    }
-
-    @GetMapping("/exports/records-excel")
-    @PreAuthorize("@permissionService.hasPermission('" + PermissionCode.REPAIR_ORDER_VIEW_ALL + "')")
-    @Loggable(module = "维修记录", operationType = "导出", operationDesc = "按设备导出维修记录报表")
-    public void exportRecordsExcel(@RequestParam(required = false) Long deviceId,
-                                   @RequestParam(required = false) String start,
-                                   @RequestParam(required = false) String end,
-                                   HttpServletResponse response) throws Exception {
-        LocalDateTime startTime = parseDateTime(start);
-        LocalDateTime endTime = parseDateTime(end);
-        List<RepairRecord> records = repairRecordMapper.selectList(new LambdaQueryWrapper<RepairRecord>()
-                .eq(deviceId != null, RepairRecord::getDeviceId, deviceId)
-                .ge(startTime != null, RepairRecord::getReportTime, startTime)
-                .le(endTime != null, RepairRecord::getReportTime, endTime)
-                .orderByDesc(RepairRecord::getId));
-        Workbook wb = new XSSFWorkbook();
-        Sheet sheet = wb.createSheet("维修记录");
-        writeHeader(sheet, "工单编号", "设备编号", "第几次报修", "第几次维修", "故障原因", "处理措施", "处理结果", "是否解决", "维修人员", "报修时间", "完成时间", "用户满意度", "反馈结论", "备注");
-        int rowNo = 1;
-        for (RepairRecord r : records) {
-            Row row = sheet.createRow(rowNo++);
-            row.createCell(0).setCellValue(str(r.getRepairOrderNo()));
-            row.createCell(1).setCellValue(str(r.getDeviceCode()));
-            row.createCell(2).setCellValue(r.getRepairSequence() == null ? "" : r.getRepairSequence());
-            row.createCell(3).setCellValue(r.getMaintenanceSequence() == null ? "" : r.getMaintenanceSequence());
-            row.createCell(4).setCellValue(str(r.getFaultReason()));
-            row.createCell(5).setCellValue(str(r.getFixMeasure()));
-            row.createCell(6).setCellValue(str(r.getResultDetail()));
-            row.createCell(7).setCellValue(r.getIsResolved() != null && r.getIsResolved() == 1 ? "是" : "否");
-            row.createCell(8).setCellValue(str(r.getMaintainerName()));
-            row.createCell(9).setCellValue(str(r.getReportTime()));
-            row.createCell(10).setCellValue(str(r.getFinishTime()));
-            row.createCell(11).setCellValue(r.getUserSatisfaction() == null ? "" : r.getUserSatisfaction());
-            row.createCell(12).setCellValue(str(r.getRepairConclusion()));
-            row.createCell(13).setCellValue(str(r.getRemark()));
-        }
-        writeWorkbook(response, wb, "repair_records_report.xlsx");
     }
 
     private LocalDateTime parseDateTime(String value) {
@@ -353,31 +377,5 @@ public class RepairOrderController {
         } catch (Exception ignore) {
             return null;
         }
-    }
-
-    private int writeRow(Sheet sheet, int idx, String key, String val) {
-        Row row = sheet.createRow(idx);
-        row.createCell(0).setCellValue(key);
-        row.createCell(1).setCellValue(val == null ? "" : val);
-        return idx + 1;
-    }
-
-    private void writeHeader(Sheet sheet, String... headers) {
-        Row row = sheet.createRow(0);
-        for (int i = 0; i < headers.length; i++) row.createCell(i).setCellValue(headers[i]);
-    }
-
-    private void writeWorkbook(HttpServletResponse response, Workbook wb, String fileName) throws Exception {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        wb.write(bos);
-        wb.close();
-        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
-        response.getOutputStream().write(bos.toByteArray());
-        response.flushBuffer();
-    }
-
-    private String str(Object o) {
-        return o == null ? "" : String.valueOf(o);
     }
 }

@@ -9,16 +9,25 @@ import java.time.LocalDateTime;
 @TableName("operation_log")
 public class OperationLog {
     private Long id;
+    private String traceId;
     private Long userId;
     private String username;
     private String module;
     private String operationType;
     private String operationDesc;
+
     private String requestMethod;
     private String requestUrl;
     private String requestParams;
+
     private String responseCode;
-    private String traceId;
+    private String resultStatus;
+    private String errorMessage;
+
     private String ip;
+    private String userAgent;
+    private Long costMs;
+
     private LocalDateTime operationTime;
+    private LocalDateTime createTime;
 }
