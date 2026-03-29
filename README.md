@@ -18,6 +18,7 @@
 - 日志管理（登录日志 + 操作日志）
 - 首页统计（工单统计 + 设备统计）
 - 智能派单算法（基于优先级 + 维修人员负载均衡自动分配）
+- 报表导出（管理员 Excel 导出工单统计/设备维修记录，支持时间范围与设备筛选）
 
 ## 运行步骤
 1. 创建数据库并导入：`sql/init.sql`
@@ -63,3 +64,9 @@
 - 论文辅助：`docs/thesis-support.md`
 - 现状审计与改造清单（2026-03-23）：`docs/step24-current-audit-20260323.md`
 - 正式改造前扫描与实施清单（2026-03-23）：`docs/step25-pre-dev-scan-20260323.md`
+
+## 报表导出接口（管理员）
+- `GET /api/reports/repair-orders/export/excel?startTime=2026-03-01 00:00:00&endTime=2026-03-31 23:59:59&deviceId=1`
+  - 按时间范围（可选）+ 设备（可选）导出工单统计报表与工单明细。
+- `GET /api/reports/repair-records/export/excel?deviceId=1&startTime=2026-03-01 00:00:00&endTime=2026-03-31 23:59:59`
+  - 按设备（可选）+ 时间范围（可选）导出维修记录报表。

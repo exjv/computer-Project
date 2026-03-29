@@ -23,6 +23,7 @@
         </el-form-item>
         <el-button type="primary" @click="load">查询</el-button>
         <el-button @click="reset">重置</el-button>
+        <el-button v-if="isAdmin" type="success" @click="exportOrderReport">导出工单统计Excel</el-button>
       </el-form>
 
       <el-card shadow="never" style="margin-top:10px">
@@ -166,7 +167,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { delApi, getPage, postApi, putApi } from '../../api'
+import { delApi, exportRepairOrderReportApi, getPage, postApi, putApi } from '../../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../../stores/user'
 import * as echarts from 'echarts'
@@ -355,6 +356,14 @@ const openLowScore = async () => {
 const openUnresolved = async () => {
   unresolvedOrders.value = await getPage('/repair-orders/feedback/unresolved-rework')
   unresolvedDialog.value = true
+}
+
+const exportOrderReport = async () => {
+  await exportRepairOrderReportApi({
+    startTime: analyticsFilter.dimension === 'custom' ? analyticsFilter.range?.[0] : undefined,
+    endTime: analyticsFilter.dimension === 'custom' ? analyticsFilter.range?.[1] : undefined
+  })
+  ElMessage.success('工单统计报表导出成功')
 }
 
 onMounted(async () => {
