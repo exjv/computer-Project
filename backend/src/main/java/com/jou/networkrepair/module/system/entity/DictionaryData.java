@@ -14,7 +14,7 @@ public class DictionaryData {
     private String dictLabel;
     private String dictValue;
     private Integer sortNo;
-    private String status;
+    private Integer status;
     private String remark;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

@@ -5,1025 +5,1186 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.module.device.entity.NetworkDevice;
 import com.jou.networkrepair.module.device.mapper.DeviceMapper;
-import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
-import com.jou.networkrepair.module.repair.algorithm.RepairDispatchAlgorithm;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAssignDTO;
-import com.jou.networkrepair.module.repair.dto.RepairOrderActionDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderAuditDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCloseDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderCreateDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderDelayApproveDTO;
+import com.jou.networkrepair.module.repair.dto.RepairOrderFeedbackDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderReassignDTO;
 import com.jou.networkrepair.module.repair.dto.RepairOrderStatusDTO;
 import com.jou.networkrepair.module.repair.entity.RepairOrder;
 import com.jou.networkrepair.module.repair.entity.RepairOrderFlow;
 import com.jou.networkrepair.module.repair.entity.RepairRecord;
+import com.jou.networkrepair.module.repair.enums.RepairOrderStatusEnum;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderFlowMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairOrderMapper;
 import com.jou.networkrepair.module.repair.mapper.RepairRecordMapper;
 import com.jou.networkrepair.module.repair.service.RepairOrderService;
 import com.jou.networkrepair.module.repair.vo.AssignmentRecommendationVO;
-import com.jou.networkrepair.module.repair.vo.DispatchResultVO;
-import com.jou.networkrepair.module.repair.vo.MaintainerRecommendVO;
+import com.jou.networkrepair.module.repair.vo.RepairEstimateVO;
+import com.jou.networkrepair.module.system.entity.BusinessLog;
+import com.jou.networkrepair.module.system.entity.FileAttachment;
+import com.jou.networkrepair.module.system.entity.RepairFeedback;
+import com.jou.networkrepair.module.system.mapper.BusinessLogMapper;
+import com.jou.networkrepair.module.system.mapper.FileAttachmentMapper;
+import com.jou.networkrepair.module.system.mapper.RepairFeedbackMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.YearMonth;
-import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class RepairOrderServiceImpl implements RepairOrderService {
     private static final Set<String> PRIORITY_SET = new HashSet<>(Arrays.asList("低", "中", "高"));
-    private static final Set<String> STATUS_SET = new HashSet<>(Arrays.asList(
-            "待提交", "已提交/待审核", "审核通过", "审核驳回", "待分配", "已分配", "待接单", "维修人员已接单", "维修中",
-            "待采购/待配件", "申请延期中", "延期已批准", "待验收/待确认", "已完成", "已关闭", "已取消"));
 
     private final RepairOrderMapper repairOrderMapper;
+    private final RepairOrderFlowMapper repairOrderFlowMapper;
     private final DeviceMapper deviceMapper;
     private final UserMapper userMapper;
-    private final RepairDispatchAlgorithm repairDispatchAlgorithm;
-    private final RepairOrderFlowMapper repairOrderFlowMapper;
+    private final BusinessLogMapper businessLogMapper;
+    private final RepairFeedbackMapper repairFeedbackMapper;
+    private final FileAttachmentMapper fileAttachmentMapper;
     private final RepairRecordMapper repairRecordMapper;
 
     @Override
     public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority,
                                   String deviceType, String faultType, Long assignMaintainerId, Integer applyDelay, Integer needPurchaseParts,
-                                  LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd, String sortField, String sortOrder) {
-        LambdaQueryWrapper<RepairOrder> wrapper = new LambdaQueryWrapper<RepairOrder>()
-                .eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status)
-                .like(title != null && !title.isEmpty(), RepairOrder::getTitle, title)
-                .like(orderNo != null && !orderNo.isEmpty(), RepairOrder::getOrderNo, orderNo)
-                .eq(priority != null && !priority.isEmpty(), RepairOrder::getPriority, priority)
-                .like(deviceType != null && !deviceType.isEmpty(), RepairOrder::getDeviceType, deviceType)
-                .like(faultType != null && !faultType.isEmpty(), RepairOrder::getFaultType, faultType)
+                                  LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd,
+                                  String sortField, String sortOrder,
+                                  Long userId, String role) {
+        LambdaQueryWrapper<RepairOrder> qw = new LambdaQueryWrapper<RepairOrder>()
+                .eq(notBlank(status), RepairOrder::getStatus, status)
+                .like(notBlank(title), RepairOrder::getTitle, title)
+                .like(notBlank(orderNo), RepairOrder::getOrderNo, orderNo)
+                .eq(notBlank(priority), RepairOrder::getPriority, priority)
+                .like(notBlank(deviceType), RepairOrder::getDeviceType, deviceType)
+                .like(notBlank(faultType), RepairOrder::getFaultType, faultType)
                 .eq(assignMaintainerId != null, RepairOrder::getAssignMaintainerId, assignMaintainerId)
                 .eq(applyDelay != null, RepairOrder::getApplyDelay, applyDelay)
                 .eq(needPurchaseParts != null, RepairOrder::getNeedPurchaseParts, needPurchaseParts)
                 .ge(reportTimeStart != null, RepairOrder::getReportTime, reportTimeStart)
                 .le(reportTimeEnd != null, RepairOrder::getReportTime, reportTimeEnd);
-        applySort(wrapper, sortField, sortOrder);
-        return repairOrderMapper.selectPage(new Page<>(current, size), wrapper);
-    }
 
-    @Override
-    public Page<RepairOrder> myPage(Long current, Long size, String status, String orderNo, String priority,
-                                    String deviceType, String faultType, Integer applyDelay, Integer needPurchaseParts,
-                                    LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd,
-                                    Long userId, String role, String sortField, String sortOrder) {
-        LambdaQueryWrapper<RepairOrder> qw = new LambdaQueryWrapper<>();
-        if ("user".equals(role)) qw.eq(RepairOrder::getReporterId, userId);
-        if ("maintainer".equals(role)) qw.eq(RepairOrder::getAssignMaintainerId, userId);
-        qw.eq(status != null && !status.isEmpty(), RepairOrder::getStatus, status)
-                .like(orderNo != null && !orderNo.isEmpty(), RepairOrder::getOrderNo, orderNo)
-                .eq(priority != null && !priority.isEmpty(), RepairOrder::getPriority, priority)
-                .like(deviceType != null && !deviceType.isEmpty(), RepairOrder::getDeviceType, deviceType)
-                .like(faultType != null && !faultType.isEmpty(), RepairOrder::getFaultType, faultType)
-                .eq(applyDelay != null, RepairOrder::getApplyDelay, applyDelay)
-                .eq(needPurchaseParts != null, RepairOrder::getNeedPurchaseParts, needPurchaseParts)
-                .ge(reportTimeStart != null, RepairOrder::getReportTime, reportTimeStart)
-                .le(reportTimeEnd != null, RepairOrder::getReportTime, reportTimeEnd);
-        applySort(qw, sortField, sortOrder);
+        if ("user".equals(role)) {
+            qw.eq(RepairOrder::getReporterId, userId);
+        } else if ("maintainer".equals(role)) {
+            qw.eq(RepairOrder::getAssignMaintainerId, userId);
+        }
+
+        if ("asc".equalsIgnoreCase(sortOrder)) {
+            if ("reportTime".equals(sortField)) qw.orderByAsc(RepairOrder::getReportTime);
+            else if ("priority".equals(sortField)) qw.orderByAsc(RepairOrder::getPriority);
+            else if ("status".equals(sortField)) qw.orderByAsc(RepairOrder::getStatus);
+            else qw.orderByAsc(RepairOrder::getId);
+        } else {
+            if ("reportTime".equals(sortField)) qw.orderByDesc(RepairOrder::getReportTime);
+            else if ("priority".equals(sortField)) qw.orderByDesc(RepairOrder::getPriority);
+            else if ("status".equals(sortField)) qw.orderByDesc(RepairOrder::getStatus);
+            else qw.orderByDesc(RepairOrder::getId);
+        }
         return repairOrderMapper.selectPage(new Page<>(current, size), qw);
     }
 
     @Override
     public RepairOrder detail(Long id, Long userId, String role) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        if ("user".equals(role) && !userId.equals(order.getReporterId())) throw new BusinessException("无权查看");
-        if ("maintainer".equals(role) && !userId.equals(order.getAssignMaintainerId())) throw new BusinessException("无权查看");
+        RepairOrder order = requireOrder(id);
+        ensureScope(order, userId, role);
         return order;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void create(RepairOrderCreateDTO dto, Long userId) {
-        if (!PRIORITY_SET.contains(dto.getPriority())) throw new BusinessException("无效优先级");
-        NetworkDevice existsDevice = deviceMapper.selectById(dto.getDeviceId());
-        if (existsDevice == null) throw new BusinessException("设备不存在");
+        if (!PRIORITY_SET.contains(dto.getPriority())) {
+            throw new BusinessException("紧急程度仅支持：低/中/高");
+        }
+        NetworkDevice device = deviceMapper.selectById(dto.getDeviceId());
+        if (device == null) throw new BusinessException("设备不存在");
         SysUser reporter = userMapper.selectById(userId);
         if (reporter == null) throw new BusinessException("报修用户不存在");
 
+        LocalDateTime now = LocalDateTime.now();
         RepairOrder order = new RepairOrder();
-        order.setDeviceId(dto.getDeviceId());
-        order.setDeviceCode(existsDevice.getDeviceCode());
-        order.setDeviceName(existsDevice.getDeviceName());
-        order.setDeviceType(existsDevice.getDeviceTypeName() != null ? existsDevice.getDeviceTypeName() : existsDevice.getDeviceType());
-        order.setTitle(dto.getTitle());
-        order.setDescription(dto.getDescription());
-        order.setFaultType(dto.getFaultType());
-        order.setPriority(dto.getPriority());
-        order.setReporterId(userId);
-        order.setReporterEmployeeNo(reporter.getEmployeeNo());
-        order.setReporterName(reporter.getRealName());
-        order.setContactPhone(dto.getContactPhone() != null && !dto.getContactPhone().trim().isEmpty() ? dto.getContactPhone() : reporter.getPhone());
-        order.setReporterDepartment(reporter.getDepartment());
-        order.setReportLocation(dto.getReportLocation() != null && !dto.getReportLocation().trim().isEmpty() ? dto.getReportLocation() : existsDevice.getLocation());
-        order.setAffectWideAreaNetwork(dto.getAffectWideAreaNetwork());
-        order.setRemark(dto.getRemark());
-        order.setOriginalExpectedFinishTime(dto.getOriginalExpectedFinishTime());
-        order.setExpectedFinishTime(dto.getOriginalExpectedFinishTime());
         order.setOrderNo(generateOrderNo());
-        boolean needApprove = existsDevice.getRepairApprovalRequired() != null && existsDevice.getRepairApprovalRequired() == 1;
-        order.setStatus(needApprove ? "已提交/待审核" : "待分配");
-        order.setProgress(needApprove ? 10 : 30);
-        order.setReportTime(LocalDateTime.now());
-        order.setCreateTime(LocalDateTime.now());
-        order.setUpdateTime(LocalDateTime.now());
+        order.setReporterId(userId);
+        order.setReporterName(reporter.getRealName());
+        order.setReporterEmployeeNo(notBlank(dto.getReporterEmployeeNo()) ? dto.getReporterEmployeeNo() : reporter.getEmployeeNo());
+        order.setContactPhone(notBlank(dto.getContactPhone()) ? dto.getContactPhone() : reporter.getPhone());
+        order.setReporterDepartment(notBlank(dto.getReporterDepartment()) ? dto.getReporterDepartment() : reporter.getDepartment());
+        order.setReportLocation(notBlank(dto.getReportLocation()) ? dto.getReportLocation() : device.getLocation());
+
+        order.setDeviceId(device.getId());
+        order.setDeviceCode(device.getDeviceCode());
+        order.setDeviceName(device.getDeviceName());
+        order.setDeviceType(notBlank(device.getDeviceTypeName()) ? device.getDeviceTypeName() : device.getDeviceType());
+
+        order.setTitle(notBlank(dto.getTitle()) ? dto.getTitle() : (device.getDeviceName() + "故障报修"));
+        order.setFaultType(dto.getFaultType());
+        order.setDescription(dto.getDescription());
+        order.setPriority(dto.getPriority());
+        order.setAffectWideAreaNetwork(defaultZero(dto.getAffectWideAreaNetwork()));
+
+        order.setNeedPurchaseParts(defaultZero(dto.getNeedPurchaseParts()));
+        order.setPartsDescription(dto.getPartsDescription());
+        order.setApplyDelay(defaultZero(dto.getApplyDelay()));
+        order.setOriginalExpectedFinishTime(dto.getOriginalExpectedFinishTime());
+        order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+        order.setExpectedFinishTime(dto.getDelayedExpectedFinishTime() != null ? dto.getDelayedExpectedFinishTime() : dto.getOriginalExpectedFinishTime());
+
+        boolean approvalRequired = device.getRepairApprovalRequired() != null && device.getRepairApprovalRequired() == 1;
+        order.setStatus(approvalRequired ? RepairOrderStatusEnum.SUBMITTED.getLabel() : RepairOrderStatusEnum.PENDING_ASSIGN.getLabel());
+        order.setProgress(approvalRequired ? 5 : 20);
+        order.setReportTime(now);
+        order.setRemark(dto.getRemark());
+        order.setCreateBy(userId);
+        order.setUpdateBy(userId);
+        order.setCreateTime(now);
+        order.setUpdateTime(now);
+
         repairOrderMapper.insert(order);
-        addFlow(order.getId(), "待提交", order.getStatus(), "SUBMIT", userId, "user",
-                needApprove ? "设备需管理员审批，进入待审核" : "设备无需审批，直接进入待分配");
-        syncDeviceStatus(order.getDeviceId());
+        String createRemark = approvalRequired ? "提交报修工单，等待管理员审核" : "提交报修工单，设备无需审核直接进入待分配";
+        addFlow(order.getId(), null, order.getStatus(), "CREATE", userId, "user", createRemark);
+        addBusinessLog(order, "CREATE", userId, "user", null, order.getStatus(), createRemark);
     }
 
     @Override
-    public void update(Long id, RepairOrder req) {
-        RepairOrder old = repairOrderMapper.selectById(id);
-        if (old == null) throw new BusinessException("工单不存在");
-        if (Arrays.asList("已完成", "已关闭", "已取消").contains(old.getStatus())) {
-            throw new BusinessException("终态工单不允许编辑核心字段");
+    @Transactional(rollbackFor = Exception.class)
+    public void update(Long id, RepairOrder req, Long userId, String role) {
+        RepairOrder old = requireOrder(id);
+        ensureScope(old, userId, role);
+        if (RepairOrderStatusEnum.terminalStatuses().contains(old.getStatus())) {
+            throw new BusinessException("终态工单不允许编辑");
         }
+
         req.setId(id);
-        req.setReporterId(null);
         req.setOrderNo(null);
+        req.setReporterId(null);
+        req.setReporterName(null);
+        req.setReporterEmployeeNo(null);
         req.setStatus(null);
-        req.setAssignMaintainerId(null);
+        req.setProgress(null);
+        req.setCreateTime(null);
+        req.setCreateBy(null);
+        req.setUpdateBy(userId);
         req.setUpdateTime(LocalDateTime.now());
         repairOrderMapper.updateById(req);
-    }
-
-    @Override
-    public void delete(Long id) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        if (Arrays.asList("维修人员已接单", "维修中", "待采购/待配件", "申请延期中", "延期已批准", "待验收/待确认", "已完成", "已关闭").contains(order.getStatus())) throw new BusinessException("当前状态不允许删除");
-        repairOrderMapper.deleteById(id);
+        addBusinessLog(old, "UPDATE", userId, role, old.getStatus(), old.getStatus(), "更新工单信息");
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void assign(Long id, RepairOrderAssignDTO dto, Long assignBy) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        if (!"待分配".equals(order.getStatus())) throw new BusinessException("未审核通过或未进入待分配，不能分配");
+    public void delete(Long id, Long userId, String role) {
+        RepairOrder order = requireOrder(id);
+        ensureScope(order, userId, role);
+        if (!"admin".equals(role) && !"user".equals(role)) {
+            throw new BusinessException("仅管理员或报修人可删除");
+        }
+        if (RepairOrderStatusEnum.terminalStatuses().contains(order.getStatus())) {
+            throw new BusinessException("终态工单不允许删除");
+        }
+        repairOrderMapper.deleteById(id);
+        addBusinessLog(order, "DELETE", userId, role, order.getStatus(), null, "删除工单");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void assign(Long id, RepairOrderAssignDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可分配");
+        RepairOrder order = requireOrder(id);
+        if (!RepairOrderStatusEnum.PENDING_ASSIGN.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("未审核通过进入待分配前，不能执行分配");
+        }
         SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
-        if (maintainer == null || !"maintainer".equals(maintainer.getRole()) || maintainer.getStatus() == null || maintainer.getStatus() != 1) {
-            throw new BusinessException("维修人员无效或不可用");
-        }
-        String fromStatus = order.getStatus();
-        SysUser assignUser = assignBy == null ? null : userMapper.selectById(assignBy);
-        if (assignUser != null) {
-            order.setAssignBy(assignUser.getId());
-            order.setAssignByEmployeeNo(assignUser.getEmployeeNo());
-            order.setAssignByName(assignUser.getRealName());
-        }
-        order.setAssignMaintainerId(dto.getAssignMaintainerId());
+        if (maintainer == null) throw new BusinessException("维修人员不存在");
+
+        LocalDateTime now = LocalDateTime.now();
+        String from = order.getStatus();
+        order.setAssignMaintainerId(maintainer.getId());
         order.setAssignMaintainerEmployeeNo(maintainer.getEmployeeNo());
         order.setAssignMaintainerName(maintainer.getRealName());
-        order.setAssignTime(LocalDateTime.now());
-        order.setStatus("已分配");
-        order.setProgress(35);
-        order.setUpdateTime(LocalDateTime.now());
+        order.setAssignBy(userId);
+        order.setAssignTime(now);
+        order.setStatus(RepairOrderStatusEnum.PENDING_ACCEPT.getLabel());
+        order.setProgress(Math.max(defaultZero(order.getProgress()), 30));
+        order.setUpdateBy(userId);
+        order.setUpdateTime(now);
         repairOrderMapper.updateById(order);
-        addFlow(order.getId(), fromStatus, "已分配", "ADMIN_ASSIGN", null, "admin", "管理员分配维修人员");
-        moveStatus(order, "待接单", 40, null, "admin", "等待维修人员接单", "SYSTEM_WAIT_ACCEPT");
+        addFlow(order.getId(), from, order.getStatus(), "ASSIGN", userId, role, "分配维修人员：" + maintainer.getRealName());
+        addBusinessLog(order, "ASSIGN", userId, role, from, order.getStatus(), "分配维修人员：" + maintainer.getRealName());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void action(Long id, RepairOrderActionDTO dto, Long userId, String role) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        String action = dto.getAction();
-        if ("ADMIN_APPROVE".equals(action)) {
-            requireRole(role, "admin");
-            checkStatus(order.getStatus(), "已提交/待审核");
-            moveStatus(order, "审核通过", 20, userId, role, dto.getRemark(), action);
-            order.setAuditBy(userId);
-            order.setAuditTime(LocalDateTime.now());
-            repairOrderMapper.updateById(order);
-            moveStatus(order, RepairOrderStatusEnum.PENDING_ASSIGN.getLabel(), 30, userId, role, "审核通过进入待分配", "ADMIN_TO_ASSIGN");
-        } else if ("ADMIN_REJECT".equals(action)) {
-            requireRole(role, "admin");
-            checkStatus(order.getStatus(), "已提交/待审核");
-            moveStatus(order, "审核驳回", 0, userId, role, dto.getRemark(), action);
-        } else if ("USER_CANCEL".equals(action)) {
-            requireRole(role, "user");
-            if (!userId.equals(order.getReporterId())) throw new BusinessException("只能撤销自己的工单");
-            if (!Arrays.asList("已提交/待审核", "审核驳回", "待分配").contains(order.getStatus())) throw new BusinessException("当前状态不允许撤销");
-            moveStatus(order, "已取消", 0, userId, role, dto.getRemark(), action);
-        } else if ("MAINTAINER_ACCEPT".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), RepairOrderStatusEnum.PENDING_ACCEPT.getLabel());
-            order.setAcceptTime(LocalDateTime.now());
-            moveStatus(order, "维修人员已接单", 45, userId, role, dto.getRemark(), action);
-        } else if ("MAINTAINER_REJECT".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), "待接单");
-            moveStatus(order, "待分配", 30, userId, role, dto.getRemark() == null ? "维修人员拒单，退回待分配" : dto.getRemark(), action);
-        } else if ("MAINTAINER_START".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), RepairOrderStatusEnum.MAINTAINER_ACCEPTED.getLabel());
-            order.setStartRepairTime(LocalDateTime.now());
-            moveStatus(order, "维修中", 60, userId, role, dto.getRemark(), action);
-        } else if ("MAINTAINER_DELAY_APPLY".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            if (!Arrays.asList("维修中", "延期已批准").contains(order.getStatus())) throw new BusinessException("当前状态不允许申请延期");
-            order.setDelayReason(dto.getRemark());
-            moveStatus(order, "申请延期中", 65, userId, role, dto.getRemark() == null ? "申请延期" : dto.getRemark(), action);
-        } else if ("MAINTAINER_PARTS_APPLY".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), "维修中");
-            order.setPartsRequirement(dto.getPartsRequirement());
-            moveStatus(order, "待采购/待配件", 68, userId, role, dto.getRemark() == null ? "申请配件" : dto.getRemark(), action);
-        } else if ("MAINTAINER_PROGRESS".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), "维修中");
-            order.setPartsRequirement(dto.getPartsRequirement());
-            moveStatus(order, "待采购/待配件", 68, userId, role, dto.getRemark() == null ? "申请配件" : dto.getRemark(), action);
-        } else if ("MAINTAINER_PROGRESS".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), RepairOrderStatusEnum.IN_REPAIR.getLabel());
-            if (dto.getProgress() == null) throw new BusinessException("请传入进度");
-            order.setProgress(dto.getProgress());
-            if (dto.getScenePhotoUrls() != null) order.setScenePhotoUrls(dto.getScenePhotoUrls());
-            if (dto.getHandleDescription() != null) order.setHandleDescription(dto.getHandleDescription());
-            order.setUpdateTime(LocalDateTime.now());
-            repairOrderMapper.updateById(order);
-            addFlow(order.getId(), RepairOrderStatusEnum.IN_REPAIR.getLabel(), RepairOrderStatusEnum.IN_REPAIR.getLabel(), action, userId, role, "进度更新至" + dto.getProgress() + "%");
-            addBusinessLog(order, action, userId, role, order.getStatus(), order.getStatus(), "进度更新至" + dto.getProgress() + "%");
-        } else if ("MAINTAINER_DELAY_APPLY".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), RepairOrderStatusEnum.IN_REPAIR.getLabel());
-            order.setApplyDelay(1);
-            order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
-            moveStatus(order, RepairOrderStatusEnum.DELAY_APPLYING.getLabel(), order.getProgress(), userId, role, dto.getRemark(), action);
-        } else if ("MAINTAINER_PARTS_APPLY".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            checkStatus(order.getStatus(), RepairOrderStatusEnum.IN_REPAIR.getLabel());
-            order.setNeedPurchaseParts(1);
-            order.setPartsDescription(dto.getPartsDescription());
-            moveStatus(order, RepairOrderStatusEnum.PENDING_PARTS.getLabel(), order.getProgress(), userId, role, dto.getRemark(), action);
-        } else if ("MAINTAINER_FINISH".equals(action)) {
-            requireRole(role, "maintainer");
-            checkMaintainerScope(order, userId);
-            if (!Arrays.asList("维修中", "延期已批准", "待采购/待配件").contains(order.getStatus())) throw new BusinessException("当前状态不允许完工");
-            moveStatus(order, "待验收/待确认", 90, userId, role, dto.getRemark(), action);
-            order.setFinishTime(LocalDateTime.now());
-            repairOrderMapper.updateById(order);
-            sinkRepairRecord(order, userId, dto);
-            recordPredictionError(order, userId);
-        } else if ("USER_CONFIRM_RESOLVED".equals(action)) {
-            requireRole(role, "user");
-            if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
-            checkStatus(order.getStatus(), "待验收/待确认");
-            order.setConfirmTime(LocalDateTime.now());
-            if (dto.getSatisfactionScore() != null) order.setSatisfactionScore(dto.getSatisfactionScore());
-            if (dto.getFeedback() != null) order.setFeedback(dto.getFeedback());
-            moveStatus(order, "已完成", 100, userId, role, dto.getRemark(), action);
-        } else if ("USER_CONFIRM_UNRESOLVED".equals(action)) {
-            requireRole(role, "user");
-            if (!userId.equals(order.getReporterId())) throw new BusinessException("只能确认自己的工单");
-            checkStatus(order.getStatus(), "待验收/待确认");
-            moveStatus(order, "维修中", 60, userId, role, dto.getRemark(), action);
-        } else if ("ADMIN_REASSIGN".equals(action)) {
-            requireRole(role, "admin");
-            if (dto.getAssignMaintainerId() == null) throw new BusinessException("改派时必须指定新的维修人员");
-            SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
-            if (maintainer == null || !"maintainer".equals(maintainer.getRole()) || maintainer.getStatus() == null || maintainer.getStatus() != 1) {
-                throw new BusinessException("维修人员无效或不可用");
-            }
-            String oldStatus = order.getStatus();
-            order.setAssignMaintainerId(dto.getAssignMaintainerId());
-            order.setAssignTime(LocalDateTime.now());
-            order.setStatus("待接单");
-            order.setProgress(35);
-            order.setUpdateTime(LocalDateTime.now());
-            repairOrderMapper.updateById(order);
-            addFlow(order.getId(), oldStatus, "待接单", action, userId, role, dto.getRemark() == null ? "管理员改派" : dto.getRemark());
-        } else if ("ADMIN_DELAY_APPROVE".equals(action)) {
-            requireRole(role, "admin");
-            checkStatus(order.getStatus(), "申请延期中");
-            moveStatus(order, "延期已批准", 70, userId, role, dto.getRemark() == null ? "管理员审批延期" : dto.getRemark(), action);
-        } else if ("ADMIN_CLOSE".equals(action)) {
-            requireRole(role, "admin");
-            if (Arrays.asList("已完成", "已关闭", "已取消").contains(order.getStatus())) throw new BusinessException("终态工单不允许重复关闭");
-            if (!"已完成".equals(order.getStatus()) && (dto.getRemark() == null || dto.getRemark().trim().isEmpty())) throw new BusinessException("用户未确认前强制关闭必须填写原因");
-            order.setCloseReason(dto.getRemark());
-            moveStatus(order, "已关闭", 100, userId, role, dto.getRemark(), action);
-        } else {
-            throw new BusinessException("不支持的操作");
+    public void auditByAdmin(Long id, RepairOrderAuditDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可审核");
+        RepairOrder order = requireOrder(id);
+        if (!RepairOrderStatusEnum.SUBMITTED.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("当前工单不在待审核状态");
         }
-        syncDeviceStatus(order.getDeviceId());
+        String from = order.getStatus();
+        LocalDateTime now = LocalDateTime.now();
+        SysUser admin = userMapper.selectById(userId);
+        order.setAuditBy(userId);
+        order.setAuditTime(now);
+        if (admin != null) {
+            order.setAuditByEmployeeNo(admin.getEmployeeNo());
+            order.setAuditByName(admin.getRealName());
+        }
+        if (Boolean.TRUE.equals(dto.getApproved())) {
+            order.setStatus(RepairOrderStatusEnum.PENDING_ASSIGN.getLabel());
+            order.setProgress(Math.max(defaultZero(order.getProgress()), 20));
+            String remark = dto.getRemark() == null ? "管理员审核通过，进入待分配" : dto.getRemark();
+            order.setRemark(remark);
+            order.setUpdateBy(userId);
+            order.setUpdateTime(now);
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), from, order.getStatus(), "ADMIN_APPROVE", userId, role, remark);
+            addBusinessLog(order, "ADMIN_APPROVE", userId, role, from, order.getStatus(), remark);
+        } else {
+            order.setStatus(RepairOrderStatusEnum.AUDIT_REJECTED.getLabel());
+            order.setProgress(0);
+            String remark = dto.getRemark() == null ? "管理员审核驳回" : dto.getRemark();
+            order.setRemark(remark);
+            order.setUpdateBy(userId);
+            order.setUpdateTime(now);
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), from, order.getStatus(), "ADMIN_REJECT", userId, role, remark);
+            addBusinessLog(order, "ADMIN_REJECT", userId, role, from, order.getStatus(), remark);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reassignByAdmin(Long id, RepairOrderReassignDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可改派");
+        RepairOrder order = requireOrder(id);
+        if (order.getAssignMaintainerId() == null) throw new BusinessException("工单尚未分配，不能改派");
+        if (RepairOrderStatusEnum.terminalStatuses().contains(order.getStatus())) {
+            throw new BusinessException("终态工单不允许改派");
+        }
+        SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
+        if (maintainer == null) throw new BusinessException("维修人员不存在");
+        String from = order.getStatus();
+        order.setAssignMaintainerId(maintainer.getId());
+        order.setAssignMaintainerEmployeeNo(maintainer.getEmployeeNo());
+        order.setAssignMaintainerName(maintainer.getRealName());
+        order.setAssignBy(userId);
+        order.setAssignTime(LocalDateTime.now());
+        order.setStatus(RepairOrderStatusEnum.PENDING_ACCEPT.getLabel());
+        order.setAcceptTime(null);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        String remark = dto.getRemark() == null ? "管理员改派维修人员：" + maintainer.getRealName() : dto.getRemark();
+        addFlow(order.getId(), from, order.getStatus(), "ADMIN_REASSIGN", userId, role, remark);
+        addBusinessLog(order, "ADMIN_REASSIGN", userId, role, from, order.getStatus(), remark);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void approveDelayByAdmin(Long id, RepairOrderDelayApproveDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可审批延期");
+        RepairOrder order = requireOrder(id);
+        if (!RepairOrderStatusEnum.DELAY_APPLYING.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("仅申请延期中的工单可审批");
+        }
+        String from = order.getStatus();
+        if (Boolean.TRUE.equals(dto.getApproved())) {
+            order.setStatus(RepairOrderStatusEnum.DELAY_APPROVED.getLabel());
+            if (dto.getDelayedExpectedFinishTime() != null) {
+                order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+                order.setExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+            }
+            String remark = dto.getRemark() == null ? "管理员审批延期通过" : dto.getRemark();
+            order.setRemark(remark);
+            order.setUpdateBy(userId);
+            order.setUpdateTime(LocalDateTime.now());
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), from, order.getStatus(), "ADMIN_DELAY_APPROVE", userId, role, remark);
+            addBusinessLog(order, "ADMIN_DELAY_APPROVE", userId, role, from, order.getStatus(), remark);
+        } else {
+            order.setStatus(RepairOrderStatusEnum.IN_PROGRESS.getLabel());
+            String remark = dto.getRemark() == null ? "管理员审批延期驳回，退回维修中" : dto.getRemark();
+            order.setRemark(remark);
+            order.setUpdateBy(userId);
+            order.setUpdateTime(LocalDateTime.now());
+            repairOrderMapper.updateById(order);
+            addFlow(order.getId(), from, order.getStatus(), "ADMIN_DELAY_REJECT", userId, role, remark);
+            addBusinessLog(order, "ADMIN_DELAY_REJECT", userId, role, from, order.getStatus(), remark);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void closeByAdmin(Long id, RepairOrderCloseDTO dto, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可关闭");
+        RepairOrder order = requireOrder(id);
+        if (RepairOrderStatusEnum.terminalStatuses().contains(order.getStatus())) {
+            throw new BusinessException("终态工单不能重复关闭");
+        }
+        if (Boolean.TRUE.equals(dto.getForceClose())) {
+            if (dto.getCloseReason() == null || dto.getCloseReason().trim().isEmpty()) {
+                throw new BusinessException("强制关闭必须填写原因");
+            }
+        } else {
+            if (!RepairOrderStatusEnum.COMPLETED.getLabel().equals(order.getStatus())
+                    || !"已解决".equals(order.getUserConfirmResult())) {
+                throw new BusinessException("用户未确认前不能直接关闭");
+            }
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.CLOSED.getLabel());
+        order.setCloseReason(dto.getCloseReason());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        String op = Boolean.TRUE.equals(dto.getForceClose()) ? "ADMIN_FORCE_CLOSE" : "ADMIN_CLOSE";
+        addFlow(order.getId(), from, order.getStatus(), op, userId, role, dto.getCloseReason());
+        addBusinessLog(order, op, userId, role, from, order.getStatus(), dto.getCloseReason());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerAccept(Long id, String remark, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!RepairOrderStatusEnum.PENDING_ACCEPT.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("未分配不能接单");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.ACCEPTED.getLabel());
+        order.setAcceptTime(LocalDateTime.now());
+        order.setProgress(Math.max(defaultZero(order.getProgress()), 40));
+        order.setRemark(remark);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_ACCEPT", userId, role, remark);
+        addBusinessLog(order, "MAINTAINER_ACCEPT", userId, role, from, order.getStatus(), remark);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerReject(Long id, String reason, Long userId, String role) {
+        requireMaintainer(role);
+        if (reason == null || reason.trim().isEmpty()) throw new BusinessException("拒单必须填写原因");
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!RepairOrderStatusEnum.PENDING_ACCEPT.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("当前状态不能拒单");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.PENDING_ASSIGN.getLabel());
+        order.setAssignMaintainerId(null);
+        order.setAssignMaintainerEmployeeNo(null);
+        order.setAssignMaintainerName(null);
+        order.setAcceptTime(null);
+        order.setRemark(reason);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_REJECT", userId, role, reason);
+        addBusinessLog(order, "MAINTAINER_REJECT", userId, role, from, order.getStatus(), reason);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerStart(Long id, String remark, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!RepairOrderStatusEnum.ACCEPTED.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("未接单不能开始维修");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.IN_PROGRESS.getLabel());
+        order.setStartRepairTime(LocalDateTime.now());
+        order.setProgress(Math.max(defaultZero(order.getProgress()), 50));
+        order.setRemark(remark);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_START", userId, role, remark);
+        addBusinessLog(order, "MAINTAINER_START", userId, role, from, order.getStatus(), remark);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerUpdateProgress(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!Arrays.asList(RepairOrderStatusEnum.IN_PROGRESS.getLabel(), RepairOrderStatusEnum.DELAY_APPROVED.getLabel(),
+                RepairOrderStatusEnum.PENDING_PARTS.getLabel()).contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许更新维修进度");
+        }
+        if (dto.getProgress() == null) throw new BusinessException("请填写进度百分比");
+        order.setProgress(dto.getProgress());
+        if (dto.getHandleDescription() != null) order.setHandleDescription(dto.getHandleDescription());
+        if (dto.getExpectedFinishTime() != null) order.setExpectedFinishTime(dto.getExpectedFinishTime());
+        order.setRemark(dto.getRemark());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        if (dto.getScenePhotoUrls() != null) {
+            for (String url : dto.getScenePhotoUrls()) {
+                if (url == null || url.trim().isEmpty()) continue;
+                FileAttachment fa = new FileAttachment();
+                fa.setBusinessType("REPAIR_ORDER");
+                fa.setBusinessId(order.getId());
+                fa.setBizType("REPAIR_ORDER");
+                fa.setBizId(order.getId());
+                fa.setFileName("现场照片");
+                fa.setFileUrl(url);
+                fa.setFileType("image");
+                fa.setUploaderId(userId);
+                fa.setUploadTime(LocalDateTime.now());
+                fa.setRemark("维修现场照片");
+                fa.setCreateTime(LocalDateTime.now());
+                fa.setUpdateTime(LocalDateTime.now());
+                fileAttachmentMapper.insert(fa);
+            }
+        }
+        addFlow(order.getId(), order.getStatus(), order.getStatus(), "MAINTAINER_PROGRESS", userId, role, dto.getRemark());
+        addBusinessLog(order, "MAINTAINER_PROGRESS", userId, role, order.getStatus(), order.getStatus(),
+                "进度更新至" + dto.getProgress() + "%，处理说明：" + (dto.getHandleDescription() == null ? "-" : dto.getHandleDescription()));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerApplyDelay(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!Arrays.asList(RepairOrderStatusEnum.IN_PROGRESS.getLabel(), RepairOrderStatusEnum.DELAY_APPROVED.getLabel()).contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许申请延期");
+        }
+        String from = order.getStatus();
+        order.setApplyDelay(1);
+        order.setStatus(RepairOrderStatusEnum.DELAY_APPLYING.getLabel());
+        order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+        order.setRemark(dto.getRemark());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_DELAY_APPLY", userId, role, dto.getRemark());
+        addBusinessLog(order, "MAINTAINER_DELAY_APPLY", userId, role, from, order.getStatus(), dto.getRemark());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerApplyParts(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!Arrays.asList(RepairOrderStatusEnum.IN_PROGRESS.getLabel(), RepairOrderStatusEnum.DELAY_APPROVED.getLabel()).contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许申请配件");
+        }
+        String from = order.getStatus();
+        order.setNeedPurchaseParts(1);
+        order.setStatus(RepairOrderStatusEnum.PENDING_PARTS.getLabel());
+        order.setPartsDescription(dto.getPartsDescription());
+        order.setRemark(dto.getRemark());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_PARTS_APPLY", userId, role, dto.getRemark());
+        addBusinessLog(order, "MAINTAINER_PARTS_APPLY", userId, role, from, order.getStatus(), dto.getRemark());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void maintainerFinish(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        requireMaintainer(role);
+        RepairOrder order = requireOrder(id);
+        ensureMaintainerScope(order, userId);
+        if (!Arrays.asList(RepairOrderStatusEnum.IN_PROGRESS.getLabel(), RepairOrderStatusEnum.DELAY_APPROVED.getLabel(),
+                RepairOrderStatusEnum.PENDING_PARTS.getLabel()).contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许提交完工");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.PENDING_CONFIRM.getLabel());
+        order.setProgress(100);
+        order.setFinishTime(LocalDateTime.now());
+        if (dto.getHandleDescription() != null) order.setHandleDescription(dto.getHandleDescription());
+        order.setRemark(dto.getRemark());
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "MAINTAINER_FINISH", userId, role, dto.getRemark());
+        addBusinessLog(order, "MAINTAINER_FINISH", userId, role, from, order.getStatus(), dto.getRemark());
+        autoDepositRepairRecord(order, userId, dto);
+        recordPredictionError(order, userId, role);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
+        if (!RepairOrderStatusEnum.containsLabel(dto.getStatus())) {
+            throw new BusinessException("不支持的工单状态");
+        }
+        RepairOrder order = requireOrder(id);
+        ensureScope(order, userId, role);
+        assertTransitionAllowed(order, dto.getStatus(), role);
+
+        LocalDateTime now = LocalDateTime.now();
+        String from = order.getStatus();
+        order.setStatus(dto.getStatus());
+        if (dto.getProgress() != null) order.setProgress(dto.getProgress());
+        if (dto.getNeedPurchaseParts() != null) order.setNeedPurchaseParts(dto.getNeedPurchaseParts());
+        if (dto.getPartsDescription() != null) order.setPartsDescription(dto.getPartsDescription());
+        if (dto.getApplyDelay() != null) order.setApplyDelay(dto.getApplyDelay());
+        if (dto.getOriginalExpectedFinishTime() != null) order.setOriginalExpectedFinishTime(dto.getOriginalExpectedFinishTime());
+        if (dto.getDelayedExpectedFinishTime() != null) {
+            order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+            order.setExpectedFinishTime(dto.getDelayedExpectedFinishTime());
+        }
+        if (dto.getUserConfirmResult() != null) order.setUserConfirmResult(dto.getUserConfirmResult());
+        if (dto.getSatisfactionScore() != null) order.setSatisfactionScore(dto.getSatisfactionScore());
+        if (dto.getFeedback() != null) order.setFeedback(dto.getFeedback());
+        if (dto.getCloseReason() != null) order.setCloseReason(dto.getCloseReason());
+        if (dto.getRemark() != null) order.setRemark(dto.getRemark());
+
+        if (RepairOrderStatusEnum.AUDIT_APPROVED.getLabel().equals(dto.getStatus()) || RepairOrderStatusEnum.AUDIT_REJECTED.getLabel().equals(dto.getStatus())) {
+            order.setAuditBy(userId);
+            SysUser u = userMapper.selectById(userId);
+            if (u != null) {
+                order.setAuditByName(u.getRealName());
+                order.setAuditByEmployeeNo(u.getEmployeeNo());
+            }
+            order.setAuditTime(now);
+        }
+        if (RepairOrderStatusEnum.ACCEPTED.getLabel().equals(dto.getStatus())) order.setAcceptTime(now);
+        if (RepairOrderStatusEnum.IN_PROGRESS.getLabel().equals(dto.getStatus())) order.setStartRepairTime(now);
+        if (RepairOrderStatusEnum.PENDING_CONFIRM.getLabel().equals(dto.getStatus())) {
+            if (order.getProgress() == null || order.getProgress() < 100) {
+                throw new BusinessException("维修未完成不能进入待验收");
+            }
+        }
+        if (RepairOrderStatusEnum.COMPLETED.getLabel().equals(dto.getStatus()) || RepairOrderStatusEnum.CLOSED.getLabel().equals(dto.getStatus())) {
+            order.setFinishTime(now);
+            if (order.getProgress() == null || order.getProgress() < 100) order.setProgress(100);
+        }
+        if (RepairOrderStatusEnum.COMPLETED.getLabel().equals(dto.getStatus())) order.setConfirmTime(now);
+
+        order.setUpdateBy(userId);
+        order.setUpdateTime(now);
+        repairOrderMapper.updateById(order);
+        addFlow(id, from, dto.getStatus(), "STATUS_UPDATE", userId, role, dto.getRemark());
+        addBusinessLog(order, "STATUS_UPDATE", userId, role, from, dto.getStatus(), dto.getRemark());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelByUser(Long id, String remark, Long userId) {
+        RepairOrder order = requireOrder(id);
+        if (!userId.equals(order.getReporterId())) throw new BusinessException("只能撤销自己的工单");
+        if (!Arrays.asList("已提交/待审核", "审核驳回").contains(order.getStatus())) {
+            throw new BusinessException("当前状态不允许撤销");
+        }
+        String from = order.getStatus();
+        order.setStatus(RepairOrderStatusEnum.CANCELED.getLabel());
+        order.setProgress(0);
+        order.setUpdateBy(userId);
+        order.setUpdateTime(LocalDateTime.now());
+        order.setRemark(remark);
+        repairOrderMapper.updateById(order);
+        addFlow(order.getId(), from, order.getStatus(), "USER_CANCEL", userId, "user", remark);
+        addBusinessLog(order, "USER_CANCEL", userId, "user", from, order.getStatus(), remark);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void feedbackByUser(Long id, RepairOrderFeedbackDTO dto, Long userId) {
+        RepairOrder order = requireOrder(id);
+        if (!userId.equals(order.getReporterId())) throw new BusinessException("只能反馈自己的工单");
+        if (!RepairOrderStatusEnum.PENDING_CONFIRM.getLabel().equals(order.getStatus())) {
+            throw new BusinessException("仅待验收状态可提交验收反馈");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String from = order.getStatus();
+        boolean unresolved = "未解决".equals(dto.getConfirmResult());
+
+        order.setUserConfirmResult(dto.getConfirmResult());
+        order.setSatisfactionScore(dto.getSatisfactionScore());
+        order.setFeedback(dto.getFeedbackContent());
+        order.setConfirmTime(now);
+        order.setRemark(dto.getRemark());
+        if (unresolved) {
+            order.setStatus(RepairOrderStatusEnum.IN_PROGRESS.getLabel());
+            order.setProgress(60);
+            if (dto.getRemark() == null || dto.getRemark().trim().isEmpty()) {
+                order.setRemark("用户反馈未解决，退回维修中");
+            }
+        } else {
+            order.setStatus(RepairOrderStatusEnum.COMPLETED.getLabel());
+            order.setProgress(100);
+            order.setFinishTime(now);
+        }
+        order.setUpdateBy(userId);
+        order.setUpdateTime(now);
+        repairOrderMapper.updateById(order);
+
+        RepairFeedback feedback = new RepairFeedback();
+        feedback.setRepairOrderId(order.getId());
+        feedback.setUserId(userId);
+        feedback.setUserEmployeeNo(order.getReporterEmployeeNo());
+        feedback.setConfirmResult(dto.getConfirmResult());
+        feedback.setSatisfactionScore(dto.getSatisfactionScore());
+        feedback.setFeedbackContent(dto.getFeedbackContent());
+        feedback.setConfirmTime(now);
+        feedback.setCreateTime(now);
+        feedback.setUpdateTime(now);
+        repairFeedbackMapper.insert(feedback);
+
+        String opType = unresolved ? "USER_CONFIRM_UNRESOLVED" : "USER_CONFIRM_RESOLVED";
+        String defaultRemark = unresolved ? "用户确认未解决，退回维修中" : "用户确认已解决，工单完成";
+        String remark = (dto.getRemark() == null || dto.getRemark().trim().isEmpty()) ? defaultRemark : dto.getRemark();
+        addFlow(order.getId(), from, order.getStatus(), opType, userId, "user", remark);
+        addBusinessLog(order, opType, userId, "user", from, order.getStatus(), remark);
+    }
+
+    @Override
+    public List<AssignmentRecommendationVO> recommendAssignments(Long id, Long userId, String role) {
+        if (!"admin".equals(role)) throw new BusinessException("仅管理员可查看推荐分配人");
+        RepairOrder order = requireOrder(id);
+        NetworkDevice device = deviceMapper.selectById(order.getDeviceId());
+        double priorityScore = calcPriorityScore(order, device);
+
+        List<SysUser> maintainers = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getRole, "maintainer")
+                .eq(SysUser::getStatus, 1)
+                .orderByAsc(SysUser::getId));
+        if (maintainers.isEmpty()) return java.util.Collections.emptyList();
+
+        return maintainers.stream().map(m -> {
+            Long unfinished = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .notIn(RepairOrder::getStatus, RepairOrderStatusEnum.terminalStatuses()));
+            Long processing = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .in(RepairOrder::getStatus, Arrays.asList(
+                            RepairOrderStatusEnum.ACCEPTED.getLabel(),
+                            RepairOrderStatusEnum.IN_PROGRESS.getLabel(),
+                            RepairOrderStatusEnum.PENDING_PARTS.getLabel(),
+                            RepairOrderStatusEnum.DELAY_APPLYING.getLabel(),
+                            RepairOrderStatusEnum.DELAY_APPROVED.getLabel())));
+
+            List<RepairOrder> finishedOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .isNotNull(RepairOrder::getReportTime)
+                    .isNotNull(RepairOrder::getFinishTime)
+                    .orderByDesc(RepairOrder::getId).last("limit 30"));
+            double avgHandleHours = finishedOrders.isEmpty() ? 8D : finishedOrders.stream()
+                    .mapToDouble(o -> java.time.Duration.between(o.getReportTime(), o.getFinishTime()).toMinutes() / 60.0)
+                    .average().orElse(8D);
+
+            List<RepairOrder> skillOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
+                    .eq(order.getDeviceType() != null, RepairOrder::getDeviceType, order.getDeviceType())
+                    .in(RepairOrder::getStatus, Arrays.asList(RepairOrderStatusEnum.COMPLETED.getLabel(), RepairOrderStatusEnum.CLOSED.getLabel()))
+                    .orderByDesc(RepairOrder::getId).last("limit 20"));
+            double skillMatch = skillOrders.isEmpty() ? 40D : Math.min(100D, 40D + skillOrders.size() * 8D);
+
+            double loadScore = Math.max(0D, 100D - unfinished * 12D - processing * 10D - Math.max(0D, avgHandleHours - 8D) * 2D);
+            double recommendation = priorityScore * 0.35 + loadScore * 0.40 + skillMatch * 0.25;
+            String reason = String.format("优先级%.1f；未完成%d、处理中%d；历史平均处理%.1fh；设备类型匹配度%.1f",
+                    priorityScore, unfinished, processing, avgHandleHours, skillMatch);
+            return new AssignmentRecommendationVO(m.getId(), m.getRealName(), round(recommendation), round(priorityScore),
+                    round(loadScore), unfinished, processing, round(avgHandleHours), round(skillMatch), reason);
+        }).sorted((a, b) -> Double.compare(b.getRecommendationScore(), a.getRecommendationScore()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public RepairEstimateVO estimateFinishTime(Long id, Long userId, String role) {
+        RepairOrder order = requireOrder(id);
+        ensureScope(order, userId, role);
+        NetworkDevice device = deviceMapper.selectById(order.getDeviceId());
+        double base = estimateBaseHours(device == null ? null : device.getDeviceType(), order.getFaultType());
+        double priorityFactor = "高".equals(order.getPriority()) ? 0.8 : ("中".equals(order.getPriority()) ? 1.0 : 1.2);
+        double partsExtra = order.getNeedPurchaseParts() != null && order.getNeedPurchaseParts() == 1 ? 4.0 : 0.0;
+        Double maintainerAvg = null;
+        if (order.getAssignMaintainerId() != null) {
+            List<RepairOrder> his = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getAssignMaintainerId, order.getAssignMaintainerId())
+                    .isNotNull(RepairOrder::getReportTime).isNotNull(RepairOrder::getFinishTime)
+                    .orderByDesc(RepairOrder::getId).last("limit 30"));
+            if (!his.isEmpty()) {
+                maintainerAvg = his.stream().mapToDouble(o -> java.time.Duration.between(o.getReportTime(), o.getFinishTime()).toMinutes() / 60.0)
+                        .average().orElse(base);
+            }
+        }
+        double estimate = base * priorityFactor + partsExtra;
+        if (maintainerAvg != null) estimate = estimate * 0.4 + maintainerAvg * 0.6;
+        LocalDateTime anchor = order.getStartRepairTime() != null ? order.getStartRepairTime() : LocalDateTime.now();
+        LocalDateTime estimatedFinish = anchor.plusMinutes((long) (estimate * 60));
+        order.setExpectedFinishTime(estimatedFinish);
+        order.setUpdateTime(LocalDateTime.now());
+        repairOrderMapper.updateById(order);
+        String basis = String.format("设备类型基准%.1fh；故障类型修正；紧急程度系数%.2f；配件附加%.1fh；维修人员历史均时%s",
+                base, priorityFactor, partsExtra, maintainerAvg == null ? "无历史，按基准" : String.format("%.1fh", maintainerAvg));
+        return new RepairEstimateVO(estimatedFinish.toString(), round(estimate), basis);
     }
 
     @Override
     public List<RepairOrderFlow> flows(Long id, Long userId, String role) {
-        RepairOrder order = detail(id, userId, role);
-        if (order == null) throw new BusinessException("工单不存在");
+        RepairOrder order = requireOrder(id);
+        ensureScope(order, userId, role);
         return repairOrderFlowMapper.selectList(new LambdaQueryWrapper<RepairOrderFlow>()
                 .eq(RepairOrderFlow::getRepairOrderId, id)
                 .orderByAsc(RepairOrderFlow::getId));
     }
 
     @Override
-    public List<BusinessLog> businessLogs(Long id, Long userId, String role) {
-        RepairOrder order = detail(id, userId, role);
-        if (order == null) throw new BusinessException("工单不存在");
-        return businessLogMapper.selectList(new LambdaQueryWrapper<BusinessLog>()
-                .eq(BusinessLog::getBusinessType, "REPAIR_ORDER")
-                .eq(BusinessLog::getBusinessNo, order.getOrderNo())
-                .orderByAsc(BusinessLog::getId));
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void reassign(Long id, RepairOrderReassignDTO dto, Long userId) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        if (!Arrays.asList(
-                RepairOrderStatusEnum.PENDING_ACCEPT.getLabel(),
-                RepairOrderStatusEnum.MAINTAINER_ACCEPTED.getLabel(),
-                RepairOrderStatusEnum.IN_REPAIR.getLabel()).contains(order.getStatus())) {
-            throw new BusinessException("当前状态不允许改派");
-        }
-        SysUser maintainer = userMapper.selectById(dto.getAssignMaintainerId());
-        if (maintainer == null || !"maintainer".equals(maintainer.getRole()) || maintainer.getStatus() == null || maintainer.getStatus() != 1) {
-            throw new BusinessException("维修人员无效或不可用");
-        }
-        String oldMaintainer = order.getAssignMaintainerName();
-        order.setAssignMaintainerId(maintainer.getId());
-        order.setAssignMaintainerEmployeeNo(maintainer.getEmployeeNo());
-        order.setAssignMaintainerName(maintainer.getRealName());
-        order.setAssignBy(userId);
-        SysUser admin = userMapper.selectById(userId);
-        if (admin != null) {
-            order.setAssignByEmployeeNo(admin.getEmployeeNo());
-            order.setAssignByName(admin.getRealName());
-        }
-        order.setAssignTime(LocalDateTime.now());
-        order.setUpdateTime(LocalDateTime.now());
-        repairOrderMapper.updateById(order);
-        addFlow(order.getId(), order.getStatus(), order.getStatus(), "ADMIN_REASSIGN", userId, "admin",
-                (dto.getRemark() == null ? "" : dto.getRemark() + "；") + "由" + (oldMaintainer == null ? "-" : oldMaintainer) + "改派为" + maintainer.getRealName());
-        addBusinessLog(order, "ADMIN_REASSIGN", userId, "admin", order.getStatus(), order.getStatus(),
-                "改派：" + (oldMaintainer == null ? "-" : oldMaintainer) + " -> " + maintainer.getRealName() + "；" + (dto.getRemark() == null ? "无备注" : dto.getRemark()));
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void approveDelay(Long id, RepairOrderDelayApproveDTO dto, Long userId) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        checkStatus(order.getStatus(), RepairOrderStatusEnum.DELAY_APPLYING.getLabel());
-        if (Boolean.TRUE.equals(dto.getApproved())) {
-            order.setDelayedExpectedFinishTime(dto.getDelayedExpectedFinishTime());
-            moveStatus(order, RepairOrderStatusEnum.DELAY_APPROVED.getLabel(), order.getProgress(), userId, "admin", dto.getRemark(), "ADMIN_DELAY_APPROVE");
-            moveStatus(order, RepairOrderStatusEnum.IN_REPAIR.getLabel(), 60, userId, "admin", "延期审批通过，返回维修中", "ADMIN_DELAY_TO_REPAIR");
-        } else {
-            moveStatus(order, RepairOrderStatusEnum.IN_REPAIR.getLabel(), 60, userId, "admin", dto.getRemark(), "ADMIN_DELAY_REJECT");
-        }
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void close(Long id, RepairOrderCloseDTO dto, Long userId) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        if (Boolean.TRUE.equals(dto.getForceClose())) {
-            if (RepairOrderStatusEnum.FINISHED.getLabel().equals(order.getStatus())) throw new BusinessException("已完成工单无需强制关闭");
-            order.setCloseReason(dto.getCloseReason());
-            moveStatus(order, RepairOrderStatusEnum.CLOSED.getLabel(), order.getProgress(), userId, "admin", dto.getCloseReason(), "ADMIN_FORCE_CLOSE");
-            return;
-        }
-        if (!RepairOrderStatusEnum.FINISHED.getLabel().equals(order.getStatus())) {
-            throw new BusinessException("用户未确认完成前不能直接关闭");
-        }
-        order.setCloseReason(dto.getCloseReason());
-        moveStatus(order, RepairOrderStatusEnum.CLOSED.getLabel(), 100, userId, "admin", dto.getCloseReason(), "ADMIN_CLOSE");
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void updateStatus(Long id, RepairOrderStatusDTO dto, Long userId, String role) {
-        RepairOrder order = repairOrderMapper.selectById(id);
-        if (order == null) throw new BusinessException("工单不存在");
-        if ("maintainer".equals(role) && !userId.equals(order.getAssignMaintainerId())) throw new BusinessException("仅可处理分配给自己的工单");
-        if (!STATUS_SET.contains(dto.getStatus())) throw new BusinessException("无效工单状态");
-        validateStatusTransition(order.getStatus(), dto.getStatus());
-        String fromStatus = order.getStatus();
-        order.setStatus(dto.getStatus());
-        if ("已完成".equals(dto.getStatus())) order.setFinishTime(LocalDateTime.now());
-        addFlow(order.getId(), order.getStatus(), dto.getStatus(), "MANUAL_STATUS", userId, role, dto.getRemark());
-        order.setUpdateTime(LocalDateTime.now());
-        repairOrderMapper.updateById(order);
-        addFlow(order.getId(), fromStatus, dto.getStatus(), "MANUAL_STATUS_UPDATE", userId, role, dto.getStatus());
-        addBusinessLog(order, "MANUAL_STATUS_UPDATE", userId, role, fromStatus, dto.getStatus(), "手工修改状态");
-
-        syncDeviceStatus(order.getDeviceId());
-    }
-
-    @Override
     public Map<String, Object> stats(Long userId, String role) {
-        LambdaQueryWrapper<RepairOrder> base = new LambdaQueryWrapper<>();
-        if ("user".equals(role)) base.eq(RepairOrder::getReporterId, userId);
-        if ("maintainer".equals(role)) base.eq(RepairOrder::getAssignMaintainerId, userId);
         Map<String, Object> map = new HashMap<>();
-        map.put("total", repairOrderMapper.selectCount(base));
-        map.put("pending", repairOrderMapper.selectCount(base.clone().in(RepairOrder::getStatus, Arrays.asList("已提交/待审核", "待分配", "已分配", "待接单"))));
-        map.put("processing", repairOrderMapper.selectCount(base.clone().in(RepairOrder::getStatus, Arrays.asList("维修人员已接单", "维修中", "待采购/待配件", "申请延期中", "延期已批准", "待验收/待确认"))));
-        map.put("finished", repairOrderMapper.selectCount(base.clone().eq(RepairOrder::getStatus, "已完成")));
+        Long total = repairOrderMapper.selectCount(scope(role, userId));
+        Long processing = repairOrderMapper.selectCount(scope(role, userId)
+                .notIn(RepairOrder::getStatus, RepairOrderStatusEnum.terminalStatuses()));
+        Long completed = repairOrderMapper.selectCount(scope(role, userId)
+                .eq(RepairOrder::getStatus, RepairOrderStatusEnum.COMPLETED.getLabel()));
+        Long closed = repairOrderMapper.selectCount(scope(role, userId)
+                .eq(RepairOrder::getStatus, RepairOrderStatusEnum.CLOSED.getLabel()));
+
+        map.put("total", total);
+        map.put("processing", processing);
+        map.put("completed", completed);
+        map.put("closed", closed);
+        List<RepairOrder> comparable = repairOrderMapper.selectList(scope(role, userId)
+                .isNotNull(RepairOrder::getExpectedFinishTime)
+                .isNotNull(RepairOrder::getFinishTime));
+        map.put("predictionComparableCount", comparable.size());
+        if (!comparable.isEmpty()) {
+            List<Double> absErrors = comparable.stream()
+                    .map(o -> Math.abs(java.time.Duration.between(o.getExpectedFinishTime(), o.getFinishTime()).toMinutes() / 60.0))
+                    .collect(Collectors.toList());
+            double avg = absErrors.stream().mapToDouble(v -> v).average().orElse(0D);
+            long within4 = absErrors.stream().filter(v -> v <= 4).count();
+            long within24 = absErrors.stream().filter(v -> v <= 24).count();
+            map.put("predictionAvgAbsErrorHours", round(avg));
+            map.put("predictionWithin4hCount", within4);
+            map.put("predictionWithin24hCount", within24);
+        } else {
+            map.put("predictionAvgAbsErrorHours", 0D);
+            map.put("predictionWithin4hCount", 0);
+            map.put("predictionWithin24hCount", 0);
+        }
+
+        if ("admin".equals(role)) {
+            List<RepairFeedback> feedbacks = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
+                    .orderByDesc(RepairFeedback::getId).last("limit 1000"));
+            map.put("feedbackCount", feedbacks.size());
+            double avg = feedbacks.stream().filter(f -> f.getSatisfactionScore() != null)
+                    .mapToInt(RepairFeedback::getSatisfactionScore).average().orElse(0D);
+            map.put("satisfactionAvg", round(avg));
+            long low = feedbacks.stream().filter(f -> f.getSatisfactionScore() != null && f.getSatisfactionScore() <= 2).count();
+            map.put("lowScoreCount", low);
+            Long unresolved = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                    .eq(RepairOrder::getUserConfirmResult, "未解决")
+                    .in(RepairOrder::getStatus, Arrays.asList(
+                            RepairOrderStatusEnum.IN_PROGRESS.getLabel(),
+                            RepairOrderStatusEnum.DELAY_APPLYING.getLabel(),
+                            RepairOrderStatusEnum.DELAY_APPROVED.getLabel(),
+                            RepairOrderStatusEnum.PENDING_PARTS.getLabel())));
+            map.put("unresolvedReworkCount", unresolved == null ? 0 : unresolved);
+        }
         return map;
     }
 
     @Override
-    public Map<String, Object> analytics(String rangeType, String start, String end) {
-        TimeRange tr = resolveRange(rangeType, start, end);
-        List<RepairOrder> orders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
-                .ge(RepairOrder::getReportTime, tr.start)
-                .le(RepairOrder::getReportTime, tr.end));
+    public Map<String, Object> analytics(String dimension, LocalDateTime startTime, LocalDateTime endTime, Long userId, String role) {
+        LocalDateTime[] range = resolveRange(dimension, startTime, endTime);
+        LocalDateTime start = range[0];
+        LocalDateTime end = range[1];
+        List<RepairOrder> orders = repairOrderMapper.selectList(scope(role, userId)
+                .ge(RepairOrder::getReportTime, start)
+                .le(RepairOrder::getReportTime, end)
+                .orderByDesc(RepairOrder::getReportTime));
+
+        long total = orders.size();
+        long completed = orders.stream().filter(o -> RepairOrderStatusEnum.COMPLETED.getLabel().equals(o.getStatus())
+                || RepairOrderStatusEnum.CLOSED.getLabel().equals(o.getStatus())).count();
+        long uncompleted = total - completed;
+        double avgHours = orders.stream()
+                .filter(o -> o.getStartRepairTime() != null && o.getFinishTime() != null && !o.getFinishTime().isBefore(o.getStartRepairTime()))
+                .mapToDouble(o -> java.time.Duration.between(o.getStartRepairTime(), o.getFinishTime()).toMinutes() / 60.0)
+                .average().orElse(0D);
+        long delayCount = orders.stream().filter(o -> o.getApplyDelay() != null && o.getApplyDelay() == 1).count();
+        long partsCount = orders.stream().filter(o -> o.getNeedPurchaseParts() != null && o.getNeedPurchaseParts() == 1).count();
+
+        Map<String, Long> byDeviceType = orders.stream()
+                .collect(Collectors.groupingBy(o -> notBlank(o.getDeviceType()) ? o.getDeviceType() : "未分类", Collectors.counting()));
+        List<Map<String, Object>> deviceTypeRank = byDeviceType.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .map(e -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("deviceType", e.getKey());
+                    m.put("count", e.getValue());
+                    return m;
+                }).collect(Collectors.toList());
+
+        Map<Long, Long> highFreqDevice = orders.stream()
+                .filter(o -> o.getDeviceId() != null)
+                .collect(Collectors.groupingBy(RepairOrder::getDeviceId, Collectors.counting()));
+        List<Map<String, Object>> highFreqDeviceRank = highFreqDevice.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .limit(15)
+                .map(e -> {
+                    NetworkDevice d = deviceMapper.selectById(e.getKey());
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("deviceId", e.getKey());
+                    m.put("deviceCode", d == null ? null : d.getDeviceCode());
+                    m.put("deviceName", d == null ? null : d.getDeviceName());
+                    m.put("count", e.getValue());
+                    return m;
+                }).collect(Collectors.toList());
+
+        Map<String, Long> reasonDist = orders.stream()
+                .collect(Collectors.groupingBy(o -> notBlank(o.getFaultType()) ? o.getFaultType() : "未填写", Collectors.counting()));
+
+        Map<Long, Long> maintainerCount = orders.stream()
+                .filter(o -> o.getAssignMaintainerId() != null)
+                .collect(Collectors.groupingBy(RepairOrder::getAssignMaintainerId, Collectors.counting()));
+        Map<Long, Double> maintainerAvg = orders.stream()
+                .filter(o -> o.getAssignMaintainerId() != null && o.getStartRepairTime() != null && o.getFinishTime() != null && !o.getFinishTime().isBefore(o.getStartRepairTime()))
+                .collect(Collectors.groupingBy(RepairOrder::getAssignMaintainerId,
+                        Collectors.averagingDouble(o -> java.time.Duration.between(o.getStartRepairTime(), o.getFinishTime()).toMinutes() / 60.0)));
+        List<Map<String, Object>> maintainerStats = maintainerCount.entrySet().stream()
+                .map(e -> {
+                    SysUser u = userMapper.selectById(e.getKey());
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("maintainerId", e.getKey());
+                    m.put("maintainerName", u == null ? null : u.getRealName());
+                    m.put("orderCount", e.getValue());
+                    m.put("avgHours", round(maintainerAvg.getOrDefault(e.getKey(), 0D)));
+                    return m;
+                }).sorted((a, b) -> Long.compare(((Number) b.get("orderCount")).longValue(), ((Number) a.get("orderCount")).longValue()))
+                .collect(Collectors.toList());
+
         List<RepairFeedback> feedbacks = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
-                .ge(RepairFeedback::getConfirmTime, tr.start)
-                .le(RepairFeedback::getConfirmTime, tr.end));
+                .ge(RepairFeedback::getConfirmTime, start)
+                .le(RepairFeedback::getConfirmTime, end)
+                .orderByDesc(RepairFeedback::getConfirmTime));
+        double satisfactionAvg = feedbacks.stream().filter(f -> f.getSatisfactionScore() != null)
+                .mapToInt(RepairFeedback::getSatisfactionScore).average().orElse(0D);
 
-        Map<String, Object> data = new HashMap<>();
-        long finishedCount = orders.stream().filter(o -> RepairOrderStatusEnum.FINISHED.getLabel().equals(o.getStatus())).count();
-        data.put("rangeType", tr.rangeType);
-        data.put("rangeStart", tr.start);
-        data.put("rangeEnd", tr.end);
-        data.put("repairCount", orders.size());
-        data.put("finishedCount", finishedCount);
-        data.put("unfinishedCount", Math.max(0, orders.size() - finishedCount));
-        data.put("avgRepairHours", avgRepairHours(orders));
-        data.put("deviceTypeRank", toRank(orders, RepairOrder::getDeviceType, null, "deviceType"));
-        data.put("highFaultDeviceRank", toRank(orders, RepairOrder::getDeviceCode, null, "deviceCode"));
-        data.put("faultReasonDistribution", toRank(orders, RepairOrder::getFaultType, null, "faultType"));
-        data.put("maintainerOrderCount", toRank(orders, RepairOrder::getAssignMaintainerName, null, "assignMaintainerName"));
-        data.put("maintainerAvgHours", maintainerAvgHours(orders));
-        data.put("satisfactionStats", satisfactionStats(feedbacks));
-        data.put("delayOrderRatio", ratio(orders.stream().filter(o -> o.getApplyDelay() != null && o.getApplyDelay() == 1).count(), orders.size()));
-        data.put("partsPurchaseRatio", ratio(orders.stream().filter(o -> o.getNeedPurchaseParts() != null && o.getNeedPurchaseParts() == 1).count(), orders.size()));
-        data.put("predictionAnalysis", predictionAnalysis(orders));
-        data.put("timeTrend", buildTrend(orders, tr));
-        return data;
-    }
-
-    @Override
-    public Map<String, Object> feedbackStats() {
-        Map<String, Object> map = new HashMap<>();
-        Long totalFeedback = repairFeedbackMapper.selectCount(new LambdaQueryWrapper<>());
-        map.put("feedbackTotalCount", totalFeedback == null ? 0L : totalFeedback);
-        if (totalFeedback == null || totalFeedback == 0L) {
-            map.put("satisfactionAvgScore", 0D);
-            map.put("lowSatisfactionCount", 0L);
-            map.put("unresolvedFeedbackCount", 0L);
-            return map;
+        Map<String, Long> timeline = new java.util.LinkedHashMap<>();
+        java.time.LocalDate cursor = start.toLocalDate();
+        java.time.LocalDate endDate = end.toLocalDate();
+        java.time.format.DateTimeFormatter fmt = "day".equals(dimension) ? java.time.format.DateTimeFormatter.ofPattern("MM-dd")
+                : java.time.format.DateTimeFormatter.ofPattern("yyyy-MM");
+        while (!cursor.isAfter(endDate)) {
+            String key = cursor.format(fmt);
+            timeline.put(key, 0L);
+            cursor = "day".equals(dimension) ? cursor.plusDays(1) : cursor.plusMonths(1).withDayOfMonth(1);
         }
-        List<RepairFeedback> feedbackList = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
-                .isNotNull(RepairFeedback::getSatisfactionScore));
-        double avg = feedbackList.stream().mapToInt(v -> v.getSatisfactionScore() == null ? 0 : v.getSatisfactionScore()).average().orElse(0D);
-        Long lowSatisfactionCount = repairFeedbackMapper.selectCount(new LambdaQueryWrapper<RepairFeedback>()
-                .isNotNull(RepairFeedback::getSatisfactionScore)
-                .le(RepairFeedback::getSatisfactionScore, 2));
-        Long unresolvedCount = repairFeedbackMapper.selectCount(new LambdaQueryWrapper<RepairFeedback>()
-                .eq(RepairFeedback::getConfirmResult, "未解决"));
-        map.put("satisfactionAvgScore", avg);
-        map.put("lowSatisfactionCount", lowSatisfactionCount == null ? 0L : lowSatisfactionCount);
-        map.put("unresolvedFeedbackCount", unresolvedCount == null ? 0L : unresolvedCount);
+        for (RepairOrder order : orders) {
+            if (order.getReportTime() == null) continue;
+            String key = ("day".equals(dimension) ? order.getReportTime().toLocalDate().format(fmt)
+                    : order.getReportTime().toLocalDate().withDayOfMonth(1).format(fmt));
+            timeline.computeIfPresent(key, (k, v) -> v + 1);
+        }
+
+        Map<String, Object> map = new HashMap<>();
+        map.put("dimension", dimension);
+        map.put("startTime", start);
+        map.put("endTime", end);
+        map.put("repairCount", total);
+        map.put("completedCount", completed);
+        map.put("uncompletedCount", uncompleted);
+        map.put("avgRepairHours", round(avgHours));
+        map.put("deviceTypeRank", deviceTypeRank);
+        map.put("highFreqDeviceRank", highFreqDeviceRank);
+        map.put("faultReasonDist", reasonDist);
+        map.put("maintainerStats", maintainerStats);
+        map.put("satisfactionAvg", round(satisfactionAvg));
+        map.put("feedbackCount", feedbacks.size());
+        map.put("delayRatio", total == 0 ? 0D : round(delayCount * 100.0 / total));
+        map.put("partsRatio", total == 0 ? 0D : round(partsCount * 100.0 / total));
+        map.put("predictionComparableCount", orders.stream().filter(o -> o.getExpectedFinishTime() != null && o.getFinishTime() != null).count());
+        map.put("timeline", timeline);
         return map;
     }
 
-    @Override
-    public Page<Map<String, Object>> lowSatisfactionOrders(Long current, Long size, Integer threshold) {
-        int scoreThreshold = threshold == null ? 2 : Math.max(1, Math.min(threshold, 5));
-        return pageFeedbackOrders(current, size, new LambdaQueryWrapper<RepairFeedback>()
-                .isNotNull(RepairFeedback::getSatisfactionScore)
-                .le(RepairFeedback::getSatisfactionScore, scoreThreshold)
-                .orderByDesc(RepairFeedback::getConfirmTime));
+    private LocalDateTime[] resolveRange(String dimension, LocalDateTime startTime, LocalDateTime endTime) {
+        LocalDateTime now = LocalDateTime.now();
+        if ("custom".equals(dimension)) {
+            if (startTime == null || endTime == null) throw new BusinessException("自定义区间需传入开始/结束时间");
+            return new LocalDateTime[]{startTime, endTime};
+        }
+        if ("day".equals(dimension)) return new LocalDateTime[]{now.minusDays(29).withHour(0).withMinute(0).withSecond(0).withNano(0), now};
+        if ("halfYear".equals(dimension)) return new LocalDateTime[]{now.minusMonths(5).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0), now};
+        if ("year".equals(dimension)) return new LocalDateTime[]{now.minusYears(1), now};
+        return new LocalDateTime[]{now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0), now};
     }
 
-    @Override
-    public Page<Map<String, Object>> unresolvedFeedbackOrders(Long current, Long size) {
-        return pageFeedbackOrders(current, size, new LambdaQueryWrapper<RepairFeedback>()
-                .eq(RepairFeedback::getConfirmResult, "未解决")
-                .orderByDesc(RepairFeedback::getConfirmTime));
-    }
-
-    @Override
-    public List<DispatchResultVO> autoDispatch() {
-        List<RepairOrder> pendingOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getStatus, RepairOrderStatusEnum.PENDING_ASSIGN.getLabel())
-                .orderByAsc(RepairOrder::getReportTime));
-        if (pendingOrders.isEmpty()) return Collections.emptyList();
-
-        List<SysUser> maintainers = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getRole, "maintainer")
-                .eq(SysUser::getStatus, 1));
-        if (maintainers.isEmpty()) throw new BusinessException("没有可用的维修人员");
-
-        Map<Long, NetworkDevice> deviceMap = new HashMap<>();
-        for (RepairOrder order : pendingOrders) {
-            deviceMap.put(order.getDeviceId(), deviceMapper.selectById(order.getDeviceId()));
-        }
-
-        Map<Long, Long> unfinishedCountMap = new HashMap<>();
-        Map<Long, Long> processingCountMap = new HashMap<>();
-        Map<Long, String> maintainerNameMap = new HashMap<>();
-        for (SysUser m : maintainers) {
-            Long unfinished = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .in(RepairOrder::getStatus, Arrays.asList("待接单", "维修人员已接单", "维修中", "待采购/待配件", "申请延期中", "延期已批准", "待验收/待确认")));
-            Long processing = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .eq(RepairOrder::getStatus, "维修中"));
-            unfinishedCountMap.put(m.getId(), unfinished == null ? 0L : unfinished);
-            processingCountMap.put(m.getId(), processing == null ? 0L : processing);
-            maintainerNameMap.put(m.getId(), m.getRealName());
-        }
-
-        PriorityQueue<RepairOrder> maxHeap = repairDispatchAlgorithm.buildMaxHeap(pendingOrders, deviceMap);
-        List<DispatchResultVO> result = new ArrayList<>();
-
-        while (!maxHeap.isEmpty()) {
-            RepairOrder order = maxHeap.poll();
-            List<MaintainerRecommendVO> recommends = recommendMaintainers(order.getId());
-            if (recommends.isEmpty()) throw new BusinessException("未找到可分配维修人员");
-            MaintainerRecommendVO top = recommends.get(0);
-            Long targetMaintainerId = top.getMaintainerId();
-
-            order.setAssignMaintainerId(targetMaintainerId);
-            order.setAssignTime(LocalDateTime.now());
-            order.setStatus(RepairOrderStatusEnum.PENDING_ACCEPT.getLabel());
-            order.setProgress(35);
-            order.setUpdateTime(LocalDateTime.now());
-            repairOrderMapper.updateById(order);
-            addFlow(order.getId(), "待分配", "待接单", "AUTO_ASSIGN", null, "system", top.getReason());
-
-            unfinishedCountMap.put(targetMaintainerId, unfinishedCountMap.get(targetMaintainerId) + 1L);
-            Double score = repairDispatchAlgorithm.calcPriorityScore(order, deviceMap.get(order.getDeviceId()));
-            result.add(new DispatchResultVO(order.getOrderNo(), targetMaintainerId,
-                    maintainerNameMap.get(targetMaintainerId), score, top.getReason()));
-        }
-        return result;
-    }
-
-
-    @Override
-    public List<MaintainerRecommendVO> recommendMaintainers(Long orderId) {
-        RepairOrder order = repairOrderMapper.selectById(orderId);
+    private RepairOrder requireOrder(Long id) {
+        RepairOrder order = repairOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("工单不存在");
-        if (!Arrays.asList("待分配", "已分配", "待接单").contains(order.getStatus())) {
-            throw new BusinessException("当前状态不支持推荐分配");
-        }
-        NetworkDevice device = deviceMapper.selectById(order.getDeviceId());
-        double priorityScore = repairDispatchAlgorithm.calcPriorityScore(order, device);
-
-        List<SysUser> maintainers = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getRole, "maintainer")
-                .eq(SysUser::getStatus, 1));
-        List<MaintainerRecommendVO> list = new ArrayList<>();
-        for (SysUser m : maintainers) {
-            Long unfinished = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .notIn(RepairOrder::getStatus, Arrays.asList("已完成", "已关闭", "已取消")));
-            Long processing = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .in(RepairOrder::getStatus, Arrays.asList("维修人员已接单", "维修中", "待采购/待配件", "申请延期中", "延期已批准")));
-
-            Long hisCount = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .eq(RepairOrder::getStatus, "已完成")
-                    .isNotNull(RepairOrder::getAcceptTime)
-                    .isNotNull(RepairOrder::getFinishTime));
-            List<RepairOrder> doneOrders = repairOrderMapper.selectList(new LambdaQueryWrapper<RepairOrder>()
-                    .eq(RepairOrder::getAssignMaintainerId, m.getId())
-                    .eq(RepairOrder::getStatus, "已完成")
-                    .isNotNull(RepairOrder::getAcceptTime)
-                    .isNotNull(RepairOrder::getFinishTime)
-                    .last("limit 30"));
-            double avgHours = 24D;
-            if (hisCount != null && hisCount > 0 && !doneOrders.isEmpty()) {
-                double sum = 0D;
-                for (RepairOrder d : doneOrders) {
-                    sum += Math.max(1, java.time.Duration.between(d.getAcceptTime(), d.getFinishTime()).toHours());
-                }
-                avgHours = sum / doneOrders.size();
-            }
-
-            boolean skillMatched = matchSkill(m, device);
-            double loadScore = repairDispatchAlgorithm.calcMaintainerLoad(
-                    unfinished == null ? 0L : unfinished,
-                    processing == null ? 0L : processing,
-                    avgHours,
-                    skillMatched);
-            double recommendationScore = priorityScore - loadScore;
-            String reason = buildRecommendReason(priorityScore, loadScore, unfinished, processing, avgHours, skillMatched, device);
-            list.add(MaintainerRecommendVO.builder()
-                    .maintainerId(m.getId())
-                    .maintainerName(m.getRealName())
-                    .priorityScore(priorityScore)
-                    .loadScore(loadScore)
-                    .recommendationScore(recommendationScore)
-                    .unfinishedCount(unfinished == null ? 0L : unfinished)
-                    .processingCount(processing == null ? 0L : processing)
-                    .avgHandleHours(avgHours)
-                    .skillMatched(skillMatched)
-                    .reason(reason)
-                    .build());
-        }
-        list.sort((a, b) -> Double.compare(b.getRecommendationScore(), a.getRecommendationScore()));
-        return list;
+        return order;
     }
 
-    private boolean matchSkill(SysUser maintainer, NetworkDevice device) {
-        if (device == null) return true;
-        String tag = ((maintainer.getDepartment() == null ? "" : maintainer.getDepartment()) + " "
-                + (maintainer.getRole() == null ? "" : maintainer.getRole()) + " "
-                + (maintainer.getRealName() == null ? "" : maintainer.getRealName())).toLowerCase();
-        String type = (device.getDeviceType() == null ? "" : device.getDeviceType()).toLowerCase();
-        if (type.contains("防火墙") || type.contains("核心") || type.contains("路由")) return tag.contains("网络") || tag.contains("核心");
-        if (type.contains("交换") || type.contains("ap") || type.contains("无线")) return tag.contains("无线") || tag.contains("接入") || tag.contains("网络");
-        return true;
+    private void ensureScope(RepairOrder order, Long userId, String role) {
+        if ("admin".equals(role)) return;
+        if ("maintainer".equals(role) && userId != null && userId.equals(order.getAssignMaintainerId())) return;
+        if ("user".equals(role) && userId != null && userId.equals(order.getReporterId())) return;
+        throw new BusinessException("无权操作该工单");
     }
 
-    private String buildRecommendReason(double priorityScore, double loadScore, Long unfinished, Long processing,
-                                        double avgHours, boolean skillMatched, NetworkDevice device) {
-        return "优先级分=" + String.format("%.1f", priorityScore)
-                + "，负载分=" + String.format("%.1f", loadScore)
-                + "（未完成" + (unfinished == null ? 0 : unfinished) + "、处理中" + (processing == null ? 0 : processing)
-                + "、平均处理时长" + String.format("%.1f", avgHours) + "h、技能" + (skillMatched ? "匹配" : "不匹配") + "）"
-                + "；设备类型=" + (device == null ? "未知" : device.getDeviceType());
-    }
-
-    private String generateOrderNo() {
-        String datePrefix = "RO" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        for (int i = 0; i < 8; i++) {
-            String candidate = datePrefix + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"))
-                    + ThreadLocalRandom.current().nextInt(100000, 999999);
-            Long count = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>().eq(RepairOrder::getOrderNo, candidate));
-            if (count == null || count == 0) return candidate;
-        }
-        throw new BusinessException("工单号生成失败，请重试");
-    }
-
-    private void validateStatusTransition(String from, String to) {
-        if (Objects.equals(from, to)) return;
-        Map<String, Set<String>> transitionMap = new HashMap<>();
-        transitionMap.put("待提交", new HashSet<>(Collections.singletonList("已提交/待审核")));
-        transitionMap.put("已提交/待审核", new HashSet<>(Arrays.asList("审核通过", "审核驳回", "已取消")));
-        transitionMap.put("审核通过", new HashSet<>(Collections.singletonList("待分配")));
-        transitionMap.put("审核驳回", new HashSet<>(Collections.singletonList("已取消")));
-        transitionMap.put("待分配", new HashSet<>(Arrays.asList("已分配", "已取消")));
-        transitionMap.put("已分配", new HashSet<>(Collections.singletonList("待接单")));
-        transitionMap.put("待接单", new HashSet<>(Arrays.asList("维修人员已接单", "待分配")));
-        transitionMap.put("维修人员已接单", new HashSet<>(Collections.singletonList("维修中")));
-        transitionMap.put("维修中", new HashSet<>(Arrays.asList("待采购/待配件", "申请延期中", "待验收/待确认", "已关闭")));
-        transitionMap.put("待采购/待配件", new HashSet<>(Arrays.asList("维修中", "待验收/待确认")));
-        transitionMap.put("申请延期中", new HashSet<>(Arrays.asList("延期已批准", "维修中")));
-        transitionMap.put("延期已批准", new HashSet<>(Arrays.asList("维修中", "待验收/待确认")));
-        transitionMap.put("待验收/待确认", new HashSet<>(Arrays.asList("已完成", "维修中", "已关闭")));
-        transitionMap.put("已完成", new HashSet<>(Collections.singletonList("已关闭")));
-        transitionMap.put("已关闭", Collections.emptySet());
-        transitionMap.put("已取消", Collections.emptySet());
-        Set<String> nextSet = transitionMap.getOrDefault(from, Collections.emptySet());
-        if (!nextSet.contains(to)) throw new BusinessException("状态流转不合法：" + from + " -> " + to);
-    }
-
-    private void moveStatus(RepairOrder order, String toStatus, Integer progress, Long userId, String role, String remark, String action) {
-        String from = order.getStatus();
-        order.setStatus(toStatus);
-        if (progress != null) order.setProgress(progress);
-        order.setUpdateTime(LocalDateTime.now());
-        repairOrderMapper.updateById(order);
-        addFlow(order.getId(), from, toStatus, action, userId, role, remark);
-        addBusinessLog(order, action, userId, role, from, toStatus, remark);
-    }
-
-    private void addFlow(Long orderId, String fromStatus, String toStatus, String action, Long userId, String role, String remark) {
+    private void addFlow(Long orderId, String from, String to, String opType, Long operatorId, String role, String remark) {
         RepairOrderFlow flow = new RepairOrderFlow();
         flow.setRepairOrderId(orderId);
-        flow.setFromStatus(fromStatus);
-        flow.setToStatus(toStatus);
-        flow.setAction(action);
-        flow.setOperatorId(userId);
-        if (userId != null) {
-            SysUser operator = userMapper.selectById(userId);
+        flow.setFromStatus(from);
+        flow.setToStatus(to);
+        flow.setAction(opType);
+        flow.setOperationType(opType);
+        flow.setOperatorId(operatorId);
+        if (operatorId != null) {
+            SysUser operator = userMapper.selectById(operatorId);
             if (operator != null) {
                 flow.setOperatorEmployeeNo(operator.getEmployeeNo());
                 flow.setOperatorName(operator.getRealName());
             }
         }
         flow.setOperatorRole(role);
-        flow.setOperationType(action);
         flow.setRemark(remark);
+        flow.setOperationTime(LocalDateTime.now());
         flow.setCreateTime(LocalDateTime.now());
+        flow.setUpdateTime(LocalDateTime.now());
         repairOrderFlowMapper.insert(flow);
     }
 
-    private void addBusinessLog(RepairOrder order, String action, Long userId, String role, String fromStatus, String toStatus, String remark) {
+    private void addBusinessLog(RepairOrder order, String action, Long operatorId, String role, String fromStatus, String toStatus, String remark) {
         BusinessLog log = new BusinessLog();
         log.setBusinessType("REPAIR_ORDER");
         log.setBusinessNo(order.getOrderNo());
+        log.setBizType("REPAIR_ORDER");
+        log.setBizId(order.getId());
+        log.setOrderNo(order.getOrderNo());
         log.setAction(action);
-        log.setOperatorId(userId);
-        if (userId != null) {
-            SysUser operator = userMapper.selectById(userId);
-            if (operator != null) {
-                log.setOperatorEmployeeNo(operator.getEmployeeNo());
-                log.setOperatorName(operator.getRealName());
+        log.setOperatorId(operatorId);
+        if (operatorId != null) {
+            SysUser u = userMapper.selectById(operatorId);
+            if (u != null) {
+                log.setOperatorName(u.getRealName());
+                log.setOperatorEmployeeNo(u.getEmployeeNo());
+                log.setOperatorJobNo(u.getEmployeeNo());
             }
         }
+        log.setOperatorRole(role);
         log.setStatus(toStatus);
-        String safeRemark = remark == null || remark.trim().isEmpty() ? "无" : remark.trim();
-        log.setContent(String.format("状态：%s -> %s；角色：%s；处理意见：%s",
-                fromStatus == null ? "-" : fromStatus, toStatus == null ? "-" : toStatus, role == null ? "-" : role, safeRemark));
+        String content = String.format("状态：%s -> %s；意见：%s",
+                fromStatus == null ? "-" : fromStatus,
+                toStatus == null ? "-" : toStatus,
+                remark == null ? "-" : remark);
+        log.setContent(content);
+        log.setOperationTime(LocalDateTime.now());
         log.setCreateTime(LocalDateTime.now());
         businessLogMapper.insert(log);
     }
 
-    private void saveFeedback(RepairOrder order, RepairOrderActionDTO dto, Long userId, String confirmResult) {
-        SysUser user = userMapper.selectById(userId);
-        RepairFeedback feedback = new RepairFeedback();
-        feedback.setRepairOrderId(order.getId());
-        feedback.setUserId(userId);
-        feedback.setUserEmployeeNo(user == null ? null : user.getEmployeeNo());
-        feedback.setConfirmResult(confirmResult);
-        feedback.setSatisfactionScore(dto.getSatisfactionScore());
-        feedback.setFeedbackContent(dto.getFeedbackContent());
-        feedback.setConfirmTime(LocalDateTime.now());
-        feedback.setCreateTime(LocalDateTime.now());
-        feedback.setUpdateTime(LocalDateTime.now());
-        repairFeedbackMapper.insert(feedback);
-        addBusinessLog(order, "USER_FEEDBACK", userId, "user", order.getStatus(), order.getStatus(),
-                "确认结果：" + confirmResult + "；满意度：" + (dto.getSatisfactionScore() == null ? "-" : dto.getSatisfactionScore())
-                        + "；反馈：" + (dto.getFeedbackContent() == null ? "无" : dto.getFeedbackContent()));
+    private String generateOrderNo() {
+        String prefix = "RO" + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        Long cnt = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
+                .likeRight(RepairOrder::getOrderNo, prefix));
+        return prefix + String.format("%04d", cnt + 1);
     }
 
-    private TimeRange resolveRange(String rangeType, String start, String end) {
-        String normalized = rangeType == null ? "month" : rangeType.trim().toLowerCase();
-        LocalDate now = LocalDate.now();
-        if ("day".equals(normalized)) {
-            return new TimeRange("day", now.atStartOfDay(), now.atTime(LocalTime.MAX));
-        }
-        if ("halfyear".equals(normalized)) {
-            LocalDate begin = now.withDayOfMonth(1).minusMonths(5);
-            return new TimeRange("halfyear", begin.atStartOfDay(), now.atTime(LocalTime.MAX));
-        }
-        if ("year".equals(normalized)) {
-            LocalDate begin = now.withDayOfYear(1);
-            return new TimeRange("year", begin.atStartOfDay(), now.atTime(LocalTime.MAX));
-        }
-        if ("custom".equals(normalized) && start != null && end != null) {
-            LocalDateTime customStart = parseDateTime(start, true);
-            LocalDateTime customEnd = parseDateTime(end, false);
-            if (customStart != null && customEnd != null && !customEnd.isBefore(customStart)) {
-                return new TimeRange("custom", customStart, customEnd);
-            }
-        }
-        LocalDate begin = now.withDayOfMonth(1);
-        return new TimeRange("month", begin.atStartOfDay(), now.atTime(LocalTime.MAX));
+    private boolean notBlank(String s) {
+        return s != null && !s.trim().isEmpty();
     }
 
-    private LocalDateTime parseDateTime(String value, boolean startOfDay) {
-        if (value == null || value.trim().isEmpty()) return null;
-        String v = value.trim();
-        try {
-            if (v.length() <= 10) {
-                LocalDate d = LocalDate.parse(v);
-                return startOfDay ? d.atStartOfDay() : d.atTime(LocalTime.MAX);
-            }
-            return LocalDateTime.parse(v.replace(" ", "T"));
-        } catch (Exception ignore) {
-            return null;
+    private Integer defaultZero(Integer i) {
+        return i == null ? 0 : i;
+    }
+
+    private LambdaQueryWrapper<RepairOrder> scope(String role, Long userId) {
+        LambdaQueryWrapper<RepairOrder> qw = new LambdaQueryWrapper<>();
+        if ("user".equals(role)) qw.eq(RepairOrder::getReporterId, userId);
+        if ("maintainer".equals(role)) qw.eq(RepairOrder::getAssignMaintainerId, userId);
+        return qw;
+    }
+
+    private void assertTransitionAllowed(RepairOrder order, String toStatus, String role) {
+        String from = order.getStatus();
+        if (from == null || from.equals(toStatus)) return;
+        if (RepairOrderStatusEnum.terminalStatuses().contains(from)) {
+            throw new BusinessException("终态工单不允许再流转");
+        }
+        if (RepairOrderStatusEnum.PENDING_ACCEPT.getLabel().equals(toStatus)
+                && !RepairOrderStatusEnum.PENDING_ASSIGN.getLabel().equals(from)) {
+            throw new BusinessException("未审核并进入待分配，不能分配到待接单");
+        }
+        if (RepairOrderStatusEnum.ACCEPTED.getLabel().equals(toStatus)
+                && !RepairOrderStatusEnum.PENDING_ACCEPT.getLabel().equals(from)) {
+            throw new BusinessException("未分配不能接单");
+        }
+        if (RepairOrderStatusEnum.IN_PROGRESS.getLabel().equals(toStatus)
+                && !(RepairOrderStatusEnum.ACCEPTED.getLabel().equals(from)
+                || RepairOrderStatusEnum.DELAY_APPLYING.getLabel().equals(from)
+                || RepairOrderStatusEnum.DELAY_APPROVED.getLabel().equals(from)
+                || "待验收/待确认".equals(from))) {
+            throw new BusinessException("未接单不能开始维修");
+        }
+        if (RepairOrderStatusEnum.PENDING_CONFIRM.getLabel().equals(toStatus)
+                && !(RepairOrderStatusEnum.IN_PROGRESS.getLabel().equals(from)
+                || RepairOrderStatusEnum.DELAY_APPROVED.getLabel().equals(from))) {
+            throw new BusinessException("维修未完成不能进入待验收");
+        }
+        if (RepairOrderStatusEnum.CLOSED.getLabel().equals(toStatus)
+                && !"admin".equals(role)
+                && !RepairOrderStatusEnum.COMPLETED.getLabel().equals(from)) {
+            throw new BusinessException("仅管理员可关闭，且需满足业务条件");
         }
     }
 
-    private double avgRepairHours(List<RepairOrder> orders) {
-        return orders.stream()
-                .filter(o -> o.getStartRepairTime() != null && o.getFinishTime() != null && !o.getFinishTime().isBefore(o.getStartRepairTime()))
-                .mapToDouble(o -> Duration.between(o.getStartRepairTime(), o.getFinishTime()).toMinutes() / 60D)
-                .average().orElse(0D);
+    private void requireMaintainer(String role) {
+        if (!"maintainer".equals(role)) throw new BusinessException("仅维修人员可执行该操作");
     }
 
-    private List<Map<String, Object>> maintainerAvgHours(List<RepairOrder> orders) {
-        Map<String, Double> avgMap = orders.stream()
-                .filter(o -> o.getAssignMaintainerName() != null && !o.getAssignMaintainerName().trim().isEmpty())
-                .filter(o -> o.getStartRepairTime() != null && o.getFinishTime() != null && !o.getFinishTime().isBefore(o.getStartRepairTime()))
-                .collect(Collectors.groupingBy(RepairOrder::getAssignMaintainerName,
-                        Collectors.averagingDouble(o -> Duration.between(o.getStartRepairTime(), o.getFinishTime()).toMinutes() / 60D)));
-        return avgMap.entrySet().stream()
-                .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
-                .map(e -> {
-                    Map<String, Object> item = new HashMap<>();
-                    item.put("name", e.getKey());
-                    item.put("value", e.getValue());
-                    Map<String, Object> filters = new HashMap<>();
-                    filters.put("assignMaintainerName", e.getKey());
-                    item.put("filters", filters);
-                    return item;
-                })
+    private void ensureMaintainerScope(RepairOrder order, Long userId) {
+        if (userId == null || !userId.equals(order.getAssignMaintainerId())) {
+            throw new BusinessException("维修人员只能操作分配给自己的工单");
+        }
+    }
+
+    private double calcPriorityScore(RepairOrder order, NetworkDevice device) {
+        double urgent = "高".equals(order.getPriority()) ? 100D : ("中".equals(order.getPriority()) ? 70D : 40D);
+        double deviceImportance = 50D;
+        if (device != null) {
+            int repairCount = device.getTotalRepairRequests() == null ? 0 : device.getTotalRepairRequests();
+            if (repairCount >= 10) deviceImportance = 90D;
+            else if (repairCount >= 5) deviceImportance = 75D;
+            else deviceImportance = 55D;
+        }
+        double waitHours = order.getReportTime() == null ? 0D :
+                Math.max(0D, java.time.Duration.between(order.getReportTime(), LocalDateTime.now()).toMinutes() / 60.0);
+        double waitScore = Math.min(100D, waitHours * 2D);
+        double impactScore = order.getAffectWideAreaNetwork() != null && order.getAffectWideAreaNetwork() == 1 ? 100D : 50D;
+        return round(urgent * 0.35 + deviceImportance * 0.20 + waitScore * 0.20 + impactScore * 0.25);
+    }
+
+    private double round(double v) {
+        return Math.round(v * 10.0) / 10.0;
+    }
+
+    private double estimateBaseHours(String deviceType, String faultType) {
+        double base = 8D;
+        if (deviceType != null) {
+            String t = deviceType.toLowerCase();
+            if (t.contains("核心") || t.contains("交换机")) base += 3;
+            if (t.contains("路由")) base += 2;
+            if (t.contains("无线")) base += 1;
+        }
+        if (faultType != null) {
+            String f = faultType.toLowerCase();
+            if (f.contains("硬件")) base += 4;
+            else if (f.contains("网络")) base += 2;
+            else if (f.contains("配置")) base += 1;
+        }
+        return base;
+    }
+
+
+    private void autoDepositRepairRecord(RepairOrder order, Long maintainerId, RepairOrderStatusDTO dto) {
+        if (order.getDeviceId() == null) return;
+        Long exists = repairRecordMapper.selectCount(new LambdaQueryWrapper<RepairRecord>()
+                .eq(RepairRecord::getRepairOrderId, order.getId()));
+        if (exists != null && exists > 0L) return;
+
+        SysUser maintainer = userMapper.selectById(maintainerId);
+        RepairRecord record = new RepairRecord();
+        record.setRepairOrderId(order.getId());
+        record.setRepairOrderNo(order.getOrderNo());
+        record.setDeviceId(order.getDeviceId());
+        record.setDeviceCode(order.getDeviceCode());
+        record.setRepairSequence(calcRepairSequence(order.getDeviceId()));
+        record.setMaintenanceSequence(calcMaintenanceSequence(order.getDeviceId()));
+        record.setReportTime(order.getReportTime());
+        record.setAcceptTime(order.getAcceptTime());
+        record.setStartRepairTime(order.getStartRepairTime());
+        record.setFinishTime(order.getFinishTime());
+        record.setMaintainerId(maintainerId);
+        record.setMaintainerEmployeeNo(maintainer == null ? null : maintainer.getEmployeeNo());
+        record.setMaintainerName(maintainer == null ? null : maintainer.getRealName());
+        record.setFaultReason(order.getFaultType());
+        record.setProcessDetail(order.getDescription());
+        record.setFixMeasure(dto.getHandleDescription() != null ? dto.getHandleDescription() : order.getHandleDescription());
+        record.setResultDetail(dto.getHandleDescription() != null ? dto.getHandleDescription() : order.getHandleDescription());
+        record.setUsedParts(order.getNeedPurchaseParts());
+        record.setUsedPartsDesc(order.getPartsDescription());
+        record.setDelayApplied(order.getApplyDelay());
+        record.setDelayReason(order.getDelayReason());
+        record.setLaborHours(calcLaborHours(order.getStartRepairTime(), order.getFinishTime()));
+        record.setRepairConclusion("维修完成，待用户确认");
+        record.setUserConfirmResult(order.getUserConfirmResult());
+        record.setUserSatisfaction(order.getSatisfactionScore());
+        record.setPhotoUrls(buildRepairPhotos(order.getId(), order.getScenePhotoUrls()));
+        record.setRemark(order.getRemark());
+        record.setIsResolved(1);
+        record.setRepairTime(order.getFinishTime() != null ? order.getFinishTime() : LocalDateTime.now());
+        record.setCreateTime(LocalDateTime.now());
+        record.setUpdateTime(LocalDateTime.now());
+        repairRecordMapper.insert(record);
+    }
+
+    private String buildRepairPhotos(Long orderId, String scenePhotoUrls) {
+        List<String> urls = new java.util.ArrayList<>();
+        if (notBlank(scenePhotoUrls)) urls.addAll(parseCsv(scenePhotoUrls));
+        List<FileAttachment> atts = fileAttachmentMapper.selectList(new LambdaQueryWrapper<FileAttachment>()
+                .and(w -> w.eq(FileAttachment::getBusinessType, "REPAIR_ORDER").or().eq(FileAttachment::getBizType, "REPAIR_ORDER"))
+                .and(w -> w.eq(FileAttachment::getBusinessId, orderId).or().eq(FileAttachment::getBizId, orderId))
+                .orderByDesc(FileAttachment::getId));
+        urls.addAll(atts.stream().map(FileAttachment::getFileUrl).filter(this::notBlank).collect(Collectors.toList()));
+        return urls.stream().distinct().collect(Collectors.joining(","));
+    }
+
+    private List<String> parseCsv(String raw) {
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .map(s -> s.replace("\"", ""))
+                .filter(this::notBlank)
                 .collect(Collectors.toList());
     }
 
-    private List<Map<String, Object>> toRank(List<RepairOrder> orders, java.util.function.Function<RepairOrder, String> fn,
-                                             Integer limit, String filterKey) {
-        Map<String, Long> grouped = orders.stream()
-                .map(fn)
-                .filter(v -> v != null && !v.trim().isEmpty())
-                .collect(Collectors.groupingBy(v -> v, Collectors.counting()));
-        return grouped.entrySet().stream()
-                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
-                .limit(limit == null ? 10 : limit)
-                .map(e -> {
-                    Map<String, Object> row = new HashMap<>();
-                    row.put("name", e.getKey());
-                    row.put("value", e.getValue());
-                    Map<String, Object> filters = new HashMap<>();
-                    filters.put(filterKey, e.getKey());
-                    row.put("filters", filters);
-                    return row;
-                })
-                .collect(Collectors.toList());
+    private Integer calcRepairSequence(Long deviceId) {
+        Long count = repairRecordMapper.selectCount(new LambdaQueryWrapper<RepairRecord>().eq(RepairRecord::getDeviceId, deviceId));
+        return (count == null ? 0 : count.intValue()) + 1;
     }
 
-    private Map<String, Object> satisfactionStats(List<RepairFeedback> feedbacks) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("count", feedbacks.size());
-        map.put("avgScore", feedbacks.stream()
-                .filter(v -> v.getSatisfactionScore() != null)
-                .mapToInt(RepairFeedback::getSatisfactionScore).average().orElse(0D));
-        Map<Integer, Long> distribution = feedbacks.stream()
-                .filter(v -> v.getSatisfactionScore() != null)
-                .collect(Collectors.groupingBy(RepairFeedback::getSatisfactionScore, Collectors.counting()));
-        List<Map<String, Object>> distList = new ArrayList<>();
-        for (int i = 1; i <= 5; i++) {
-            Map<String, Object> row = new HashMap<>();
-            row.put("name", i + "分");
-            row.put("score", i);
-            row.put("value", distribution.getOrDefault(i, 0L));
-            distList.add(row);
-        }
-        map.put("distribution", distList);
-        map.put("unresolvedCount", feedbacks.stream().filter(v -> "未解决".equals(v.getConfirmResult())).count());
-        return map;
-    }
-
-    private Map<String, Object> predictionAnalysis(List<RepairOrder> orders) {
-        List<RepairOrder> comparable = orders.stream()
-                .filter(o -> o.getExpectedFinishTime() != null && o.getFinishTime() != null)
-                .collect(Collectors.toList());
-        Map<String, Object> map = new HashMap<>();
-        map.put("count", comparable.size());
-        double avgError = comparable.stream()
-                .mapToDouble(o -> Math.abs(Duration.between(o.getExpectedFinishTime(), o.getFinishTime()).toMinutes()) / 60D)
-                .average().orElse(0D);
-        map.put("avgAbsErrorHours", avgError);
-        map.put("within4h", comparable.stream().filter(o -> Math.abs(Duration.between(o.getExpectedFinishTime(), o.getFinishTime()).toMinutes()) <= 240).count());
-        map.put("within24h", comparable.stream().filter(o -> Math.abs(Duration.between(o.getExpectedFinishTime(), o.getFinishTime()).toMinutes()) <= 1440).count());
-        return map;
-    }
-
-    private List<Map<String, Object>> buildTrend(List<RepairOrder> orders, TimeRange tr) {
-        boolean monthly = "year".equals(tr.rangeType) || "halfyear".equals(tr.rangeType) ||
-                ChronoUnit.DAYS.between(tr.start.toLocalDate(), tr.end.toLocalDate()) > 62;
-        DateTimeFormatter fmt = monthly ? DateTimeFormatter.ofPattern("yyyy-MM") : DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        Map<String, Long> reportCount = orders.stream().filter(o -> o.getReportTime() != null)
-                .collect(Collectors.groupingBy(o -> o.getReportTime().format(fmt), TreeMap::new, Collectors.counting()));
-        Map<String, Long> finishedCount = orders.stream()
-                .filter(o -> o.getFinishTime() != null && RepairOrderStatusEnum.FINISHED.getLabel().equals(o.getStatus()))
-                .collect(Collectors.groupingBy(o -> o.getFinishTime().format(fmt), TreeMap::new, Collectors.counting()));
-        Set<String> axis = new LinkedHashSet<>();
-        axis.addAll(reportCount.keySet());
-        axis.addAll(finishedCount.keySet());
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (String key : axis) {
-            Map<String, Object> row = new HashMap<>();
-            row.put("bucket", key);
-            row.put("reportCount", reportCount.getOrDefault(key, 0L));
-            row.put("finishedCount", finishedCount.getOrDefault(key, 0L));
-            rows.add(row);
-        }
-        return rows;
-    }
-
-    private double ratio(long num, long den) {
-        if (den <= 0) return 0D;
-        return ((double) num / (double) den) * 100D;
-    }
-
-    private Page<Map<String, Object>> pageFeedbackOrders(Long current, Long size, LambdaQueryWrapper<RepairFeedback> wrapper) {
-        Page<RepairFeedback> feedbackPage = repairFeedbackMapper.selectPage(new Page<>(current, size), wrapper);
-        Page<Map<String, Object>> result = new Page<>(feedbackPage.getCurrent(), feedbackPage.getSize(), feedbackPage.getTotal());
-        if (feedbackPage.getRecords() == null || feedbackPage.getRecords().isEmpty()) {
-            result.setRecords(Collections.emptyList());
-            return result;
-        }
-        List<Long> orderIds = feedbackPage.getRecords().stream().map(RepairFeedback::getRepairOrderId).collect(java.util.stream.Collectors.toList());
-        Map<Long, RepairOrder> orderMap = repairOrderMapper.selectBatchIds(orderIds).stream()
-                .collect(java.util.stream.Collectors.toMap(RepairOrder::getId, v -> v, (a, b) -> a));
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (RepairFeedback feedback : feedbackPage.getRecords()) {
-            RepairOrder order = orderMap.get(feedback.getRepairOrderId());
-            Map<String, Object> row = new HashMap<>();
-            row.put("feedbackId", feedback.getId());
-            row.put("repairOrderId", feedback.getRepairOrderId());
-            row.put("orderNo", order == null ? null : order.getOrderNo());
-            row.put("title", order == null ? null : order.getTitle());
-            row.put("orderStatus", order == null ? null : order.getStatus());
-            row.put("assignMaintainerName", order == null ? null : order.getAssignMaintainerName());
-            row.put("confirmResult", feedback.getConfirmResult());
-            row.put("satisfactionScore", feedback.getSatisfactionScore());
-            row.put("feedbackContent", feedback.getFeedbackContent());
-            row.put("confirmTime", feedback.getConfirmTime());
-            rows.add(row);
-        }
-        result.setRecords(rows);
-        return result;
-    }
-
-    private void validateFeedbackInput(RepairOrderActionDTO dto) {
-        if (dto.getSatisfactionScore() == null || dto.getSatisfactionScore() < 1 || dto.getSatisfactionScore() > 5) {
-            throw new BusinessException("请填写1~5分满意度");
-        }
-        if (dto.getFeedbackContent() == null || dto.getFeedbackContent().trim().isEmpty()) {
-            throw new BusinessException("请填写反馈意见");
-        }
-    }
-
-    private void requireRole(String current, String expected) {
-        if (!expected.equals(current)) throw new BusinessException("当前角色无权执行该操作");
-    }
-
-    private void checkStatus(String current, String expected) {
-        if (!expected.equals(current)) throw new BusinessException("当前状态不允许该操作");
-    }
-
-    private void checkMaintainerScope(RepairOrder order, Long userId) {
-        if (!userId.equals(order.getAssignMaintainerId())) throw new BusinessException("仅可处理分配给自己的工单");
-    }
-
-    private void syncDeviceStatus(Long deviceId) {
-        NetworkDevice dbDevice = deviceMapper.selectById(deviceId);
-        if (dbDevice == null) return;
-
-        Long activeOrderCount = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeviceId, deviceId)
-                .notIn(RepairOrder::getStatus, Arrays.asList("已完成", "已关闭", "已取消", "审核驳回")));
-        Long totalOrderCount = repairOrderMapper.selectCount(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeviceId, deviceId));
-        Long totalRepairCount = repairRecordMapper.selectCount(new LambdaQueryWrapper<RepairRecord>()
-                .eq(RepairRecord::getDeviceId, deviceId));
-        RepairOrder latestOrder = repairOrderMapper.selectOne(new LambdaQueryWrapper<RepairOrder>()
-                .eq(RepairOrder::getDeviceId, deviceId)
-                .orderByDesc(RepairOrder::getReportTime)
-                .last("limit 1"));
-
-        Map<String, Long> reasonStats = new LinkedHashMap<>();
-        List<RepairRecord> records = repairRecordMapper.selectList(new LambdaQueryWrapper<RepairRecord>()
+    private Integer calcMaintenanceSequence(Long deviceId) {
+        Long count = repairRecordMapper.selectCount(new LambdaQueryWrapper<RepairRecord>()
                 .eq(RepairRecord::getDeviceId, deviceId)
-                .orderByDesc(RepairRecord::getId));
-        for (RepairRecord record : records) {
-            String reason = record.getFaultReason();
-            if (reason == null || reason.trim().isEmpty()) continue;
-            reasonStats.put(reason, reasonStats.getOrDefault(reason, 0L) + 1L);
-        }
-        String reasonStatsText = "";
-        if (!reasonStats.isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            reasonStats.forEach((k, v) -> sb.append(k).append(":").append(v).append(";"));
-            reasonStatsText = sb.substring(0, sb.length() - 1);
-        }
+                .eq(RepairRecord::getIsResolved, 1));
+        return (count == null ? 0 : count.intValue()) + 1;
+    }
 
-        NetworkDevice update = new NetworkDevice();
-        update.setId(deviceId);
-        update.setLastFaultTime(latestOrder == null ? null : latestOrder.getReportTime());
-        update.setTotalRepairRequests(totalOrderCount == null ? 0 : totalOrderCount.intValue());
-        update.setTotalRepairCount(totalRepairCount == null ? 0 : totalRepairCount.intValue());
-        update.setFaultReasonStats(reasonStatsText);
-        if (!Arrays.asList("停用", "报废").contains(dbDevice.getStatus())) {
-            update.setStatus(activeOrderCount != null && activeOrderCount > 0 ? "维修中" : "正常");
-        }
-        update.setUpdateTime(LocalDateTime.now());
-        deviceMapper.updateById(update);
+    private Integer calcLaborHours(LocalDateTime start, LocalDateTime finish) {
+        if (start == null || finish == null || finish.isBefore(start)) return null;
+        long hours = java.time.Duration.between(start, finish).toHours();
+        return (int) Math.max(1, hours);
+    }
+
+    private void recordPredictionError(RepairOrder order, Long userId, String role) {
+        if (order.getExpectedFinishTime() == null || order.getFinishTime() == null) return;
+        double err = Math.abs(java.time.Duration.between(order.getExpectedFinishTime(), order.getFinishTime()).toMinutes() / 60.0);
+        addBusinessLog(order, "PREDICTION_EVAL", userId, role, order.getStatus(), order.getStatus(),
+                "预测误差：" + round(err) + "小时");
     }
 }

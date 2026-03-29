@@ -18,9 +18,17 @@
 - 日志管理（登录日志 + 操作日志）
 - 首页统计（工单统计 + 设备统计）
 - 智能派单算法（基于优先级 + 维修人员负载均衡自动分配）
+- 报表导出（管理员 Excel 导出工单统计/设备维修记录，支持时间范围与设备筛选）
 
 ## 运行步骤
-1. 创建数据库并导入：`sql/init.sql`
+1. 创建数据库并导入（推荐最终统一脚本）：`sql/final_schema.sql`
+   - 兼容旧流程时可使用：`sql/init.sql`
+   - 若执行第 2 步数据库重构，请追加执行：`sql/migration/20260323_step26_refactor_models.sql`
+   - 若执行第 4 步登录重构补丁：`sql/migration/20260323_step27_auth_login_refactor.sql`
+   - 若执行第 17 步维修记录强化补丁：`sql/migration/20260329_step28_repair_record_enhance.sql`
+   - 若使用 Flyway 版本化脚本初始化，可改为执行：`sql/migrations/V2__refactor_core_schema.sql`
+   - 精简演示数据：`sql/demo_seed_step26.sql`
+   - 全链路验收演示数据（第23步）：`sql/demo_seed_step23.sql`
 2. 修改 `backend/src/main/resources/application.yml` 数据库配置
 3. 启动后端：
    ```bash
@@ -56,3 +64,12 @@
 ## 文档
 - 接口说明：`docs/api.md`
 - 论文辅助：`docs/thesis-support.md`
+- 现状审计与改造清单（2026-03-23）：`docs/step24-current-audit-20260323.md`
+- 正式改造前扫描与实施清单（2026-03-23）：`docs/step25-pre-dev-scan-20260323.md`
+- 最终联调验收与自检报告（2026-03-29）：`docs/step23-final-acceptance-20260329.md`
+
+## 报表导出接口（管理员）
+- `GET /api/reports/repair-orders/export/excel?startTime=2026-03-01 00:00:00&endTime=2026-03-31 23:59:59&deviceId=1`
+  - 按时间范围（可选）+ 设备（可选）导出工单统计报表与工单明细。
+- `GET /api/reports/repair-records/export/excel?deviceId=1&startTime=2026-03-01 00:00:00&endTime=2026-03-31 23:59:59`
+  - 按设备（可选）+ 时间范围（可选）导出维修记录报表。

@@ -6,13 +6,15 @@
       <el-form-item label="设备ID"><el-input v-model="query.deviceId"/></el-form-item>
       <el-form-item label="维修人ID"><el-input v-model="query.maintainerId"/></el-form-item>
       <el-form-item label="是否解决"><el-select v-model="query.isResolved" clearable><el-option label="是" :value="1"/><el-option label="否" :value="0"/></el-select></el-form-item>
+      <el-form-item label="维修时间区间"><el-date-picker v-model="query.timeRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss"/></el-form-item>
       <el-button type="primary" @click="load">查询</el-button><el-button @click="reset">重置</el-button>
+      <el-button v-if="isAdmin" type="success" @click="exportRecords">导出设备维修记录Excel</el-button>
     </el-form>
 
     <el-card style="margin-bottom:12px">
-      <div><b>设备频繁报修Top</b>：{{ (deviceStats.frequentRepairDevices||[]).slice(0,3).map(v=>`设备${v.key}:${v.value}次`).join('；') || '-' }}</div>
-      <div style="margin-top:6px"><b>平均维修时长最长Top</b>：{{ (deviceStats.longestAvgRepairDevices||[]).slice(0,3).map(v=>`设备${v.key}:${Number(v.value||0).toFixed(1)}h`).join('；') || '-' }}</div>
-      <div style="margin-top:6px"><b>接近淘汰/更新周期</b>：{{ (deviceStats.nearRetireDevices||[]).slice(0,5).map(v=>`设备${v.key}`).join('、') || '-' }}</div>
+      <div><b>设备频繁报修Top</b>：{{ (deviceStats.frequentRepairDevices||[]).slice(0,3).map(v=>`${v.deviceCode||('设备'+v.deviceId)}:${v.repairCount||0}次`).join('；') || '-' }}</div>
+      <div style="margin-top:6px"><b>平均维修时长最长Top</b>：{{ (deviceStats.longestAvgRepairDevices||[]).slice(0,3).map(v=>`${v.deviceCode||('设备'+v.deviceId)}:${Number(v.avgRepairHours||0).toFixed(1)}h`).join('；') || '-' }}</div>
+      <div style="margin-top:6px"><b>接近淘汰/更新周期</b>：{{ (deviceStats.nearRetireDevices||[]).slice(0,5).map(v=>v.deviceCode||('设备'+v.deviceId)).join('、') || '-' }}</div>
     </el-card>
 
     <el-button type="primary" @click="openAdd">新增维修记录</el-button>
@@ -57,21 +59,30 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { getPage, postApi, putApi, delApi } from '../../api'
+import { exportRepairRecordReportApi, getPage, postApi, putApi, delApi } from '../../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../../stores/user'
 
 const isAdmin=computed(()=>useUserStore().userInfo.role==='admin')
-const query=reactive({repairOrderId:'',deviceId:'',maintainerId:'',isResolved:''}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0),dialog=ref(false),detailDialog=ref(false),current=ref({}),form=reactive({})
+const query=reactive({repairOrderId:'',deviceId:'',maintainerId:'',isResolved:'',timeRange:[]}),page=reactive({current:1,size:10}),list=ref([]),total=ref(0),dialog=ref(false),detailDialog=ref(false),current=ref({}),form=reactive({})
 const deviceStats = ref({})
 
 const load=async()=>{const r=await getPage('/repair-records/page',{...query,...page});list.value=r.records;total.value=r.total;deviceStats.value=await getPage('/repair-records/device-statistics')}
-const reset=()=>{Object.assign(query,{repairOrderId:'',deviceId:'',maintainerId:'',isResolved:''});load()}
+const reset=()=>{Object.assign(query,{repairOrderId:'',deviceId:'',maintainerId:'',isResolved:'',timeRange:[]});load()}
 const openAdd=()=>{Object.assign(form,{id:null,repairOrderId:'',deviceId:'',maintainerId:'',faultReason:'',processDetail:'',resultDetail:'',isResolved:1,usedParts:0,usedPartsDesc:'',delayApplied:0,delayReason:'',laborHours:0,fixMeasure:'',userConfirmResult:'',userSatisfaction:5,photoUrls:'',remark:'',reportTime:'',acceptTime:'',startRepairTime:'',finishTime:''});dialog.value=true}
 const edit=(row)=>{Object.assign(form,row);dialog.value=true}
 const detail=(row)=>{current.value=row;detailDialog.value=true}
 const save=async()=>{if(form.id) await putApi(`/repair-records/${form.id}`,form); else await postApi('/repair-records',form);ElMessage.success('保存成功');dialog.value=false;load()}
 const remove=async(row)=>{await ElMessageBox.confirm('确认删除该维修记录吗？','删除确认');await delApi(`/repair-records/${row.id}`);ElMessage.success('删除成功');load()}
+const exportRecords = async () => {
+  const [startTime, endTime] = query.timeRange || []
+  await exportRepairRecordReportApi({
+    deviceId: query.deviceId || undefined,
+    startTime,
+    endTime
+  })
+  ElMessage.success('设备维修记录报表导出成功')
+}
 
 onMounted(load)
 </script>

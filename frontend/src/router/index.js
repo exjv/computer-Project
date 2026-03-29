@@ -13,6 +13,10 @@ const routes = [
     { path: 'repair-orders', component: () => import('../views/repair/RepairOrderView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-orders'] } },
     { path: 'repair-orders/:id', component: () => import('../views/repair/RepairOrderDetailView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-orders'] } },
     { path: 'repair-orders/:id/progress', component: () => import('../views/repair/RepairOrderProgressView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-orders'] } },
+    { path: 'repair-apply', component: () => import('../views/repair/RepairApplyView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-apply'] } },
+    { path: 'my-repairs', component: () => import('../views/repair/MyRepairRecordsView.vue'), meta: { roles: ROUTE_ROLE_MAP['/my-repairs'] } },
+    { path: 'my-repairs/:id/progress', component: () => import('../views/repair/RepairOrderProgressView.vue'), meta: { roles: ROUTE_ROLE_MAP['/my-repairs'] } },
+    { path: 'maintainer-orders', component: () => import('../views/repair/MaintainerPendingOrdersView.vue'), meta: { roles: ROUTE_ROLE_MAP['/maintainer-orders'] } },
     { path: 'repair-records', component: () => import('../views/record/RepairRecordView.vue'), meta: { roles: ROUTE_ROLE_MAP['/repair-records'] } },
     { path: 'logs', component: () => import('../views/log/LogView.vue'), meta: { roles: ROUTE_ROLE_MAP['/logs'] } },
     { path: 'profile', component: () => import('../views/profile/ProfileView.vue'), meta: { roles: ROUTE_ROLE_MAP['/profile'] } }
@@ -25,7 +29,8 @@ router.beforeEach(async (to) => {
   if (to.path === '/login' || to.path === '/portal') return true
   if (!store.token) return '/portal'
   if (!store.userInfo.role) await store.fetchUserInfo()
-  const targetRoles = to.meta.roles || []
+  const dynamicMap = store.routeRoleMap || ROUTE_ROLE_MAP
+  const targetRoles = to.meta.roles || dynamicMap[to.path] || []
   if (targetRoles.length && !store.hasAnyRole(targetRoles)) return '/'
   return true
 })

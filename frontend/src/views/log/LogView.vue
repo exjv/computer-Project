@@ -5,6 +5,9 @@
       <el-tab-pane label="系统审计日志" name="audit">
         <el-form :inline="true" :model="auditQuery">
           <el-form-item label="用户"><el-input v-model="auditQuery.username"/></el-form-item>
+          <el-form-item label="工号"><el-input v-model="auditQuery.employeeNo"/></el-form-item>
+          <el-form-item label="工单号"><el-input v-model="auditQuery.orderNo"/></el-form-item>
+          <el-form-item label="设备编号"><el-input v-model="auditQuery.deviceCode"/></el-form-item>
           <el-form-item label="操作类型"><el-input v-model="auditQuery.operationType"/></el-form-item>
           <el-form-item label="登录状态"><el-select v-model="auditQuery.loginStatus" clearable><el-option label="成功" value="SUCCESS"/><el-option label="失败" value="FAIL"/></el-select></el-form-item>
           <el-form-item label="时间区间"><el-date-picker v-model="auditQuery.range" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss"/></el-form-item>
@@ -13,6 +16,7 @@
         <el-table :data="auditList">
           <el-table-column prop="category" label="日志类型" width="100"/>
           <el-table-column prop="username" label="用户" width="120"/>
+          <el-table-column prop="employeeNo" label="工号" width="130"/>
           <el-table-column prop="operationType" label="操作" width="140"/>
           <el-table-column prop="time" label="时间" width="180"/>
           <el-table-column prop="friendlyText" label="友好文案" min-width="420"/>
@@ -59,13 +63,21 @@ const active=ref('audit')
 const detailDialog=ref(false),detailData=ref({})
 
 const auditList=ref([]),auditTotal=ref(0),auditPage=reactive({current:1,size:10})
-const auditQuery=reactive({username:'',operationType:'',loginStatus:'',range:[]})
+const auditQuery=reactive({username:'',employeeNo:'',orderNo:'',deviceCode:'',operationType:'',loginStatus:'',range:[]})
 
 const bizList=ref([]),bizTotal=ref(0),bizPage=reactive({current:1,size:10})
 const bizQuery=reactive({operatorName:'',operatorEmployeeNo:'',orderNo:'',deviceCode:'',action:'',range:[]})
 
 const loadAudit=async()=>{
-  const params={...auditPage,username:auditQuery.username,operationType:auditQuery.operationType,loginStatus:auditQuery.loginStatus}
+  const params={
+    ...auditPage,
+    username:auditQuery.username,
+    employeeNo:auditQuery.employeeNo,
+    orderNo:auditQuery.orderNo,
+    deviceCode:auditQuery.deviceCode,
+    operationType:auditQuery.operationType,
+    loginStatus:auditQuery.loginStatus
+  }
   if((auditQuery.range||[]).length===2){params.startTime=auditQuery.range[0];params.endTime=auditQuery.range[1]}
   const r=await getPage('/logs/audit/page',params);auditList.value=r.records||[];auditTotal.value=r.total||0
 }
