@@ -65,6 +65,20 @@
       </el-card></el-col>
     </el-row>
 
+
+    <el-card style="margin-top:12px"><template #header>最近维修记录</template>
+      <el-table :data="detail.recentRepairRecords || []">
+        <el-table-column prop="repairOrderNo" label="工单号" width="180"/>
+        <el-table-column prop="repairSequence" label="报修序号" width="100"/>
+        <el-table-column prop="maintenanceSequence" label="维修序号" width="100"/>
+        <el-table-column prop="faultReason" label="故障原因" min-width="160"/>
+        <el-table-column prop="fixMeasure" label="维修措施" min-width="180"/>
+        <el-table-column prop="laborHours" label="工期(h)" width="90"/>
+        <el-table-column prop="maintainerName" label="维修人员" width="110"/>
+        <el-table-column prop="finishTime" label="完成时间" width="180"/>
+      </el-table>
+    </el-card>
+
     <el-card style="margin-top:12px"><template #header>维修时间线</template>
       <el-empty v-if="!(detail.repairTimeline || []).length" description="暂无时间线记录"/>
       <el-timeline v-else>

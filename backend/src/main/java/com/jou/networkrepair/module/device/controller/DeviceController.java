@@ -147,6 +147,7 @@ public class DeviceController {
         data.put("currentStatus", device.getStatus());
         data.put("historyRepairCount", records.size());
         data.put("recentRepairRecord", records.isEmpty() ? null : records.get(0));
+        data.put("recentRepairRecords", records.stream().limit(10).collect(Collectors.toList()));
         data.put("repairTimeline", timeline);
         data.put("faultReasonStats", reasonStats);
         data.put("relatedOrders", orderList);

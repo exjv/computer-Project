@@ -20,8 +20,7 @@ public class RepairRecord {
     @TableField("repair_count_no")
     private Integer repairSequence;
 
-    /** 兼容历史字段 */
-    @TableField(exist = false)
+    @TableField("maintenance_count_no")
     private Integer maintenanceSequence;
 
     private LocalDateTime reportTime;

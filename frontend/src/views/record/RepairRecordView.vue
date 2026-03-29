@@ -10,9 +10,9 @@
     </el-form>
 
     <el-card style="margin-bottom:12px">
-      <div><b>设备频繁报修Top</b>：{{ (deviceStats.frequentRepairDevices||[]).slice(0,3).map(v=>`设备${v.key}:${v.value}次`).join('；') || '-' }}</div>
-      <div style="margin-top:6px"><b>平均维修时长最长Top</b>：{{ (deviceStats.longestAvgRepairDevices||[]).slice(0,3).map(v=>`设备${v.key}:${Number(v.value||0).toFixed(1)}h`).join('；') || '-' }}</div>
-      <div style="margin-top:6px"><b>接近淘汰/更新周期</b>：{{ (deviceStats.nearRetireDevices||[]).slice(0,5).map(v=>`设备${v.key}`).join('、') || '-' }}</div>
+      <div><b>设备频繁报修Top</b>：{{ (deviceStats.frequentRepairDevices||[]).slice(0,3).map(v=>`${v.deviceCode||('设备'+v.deviceId)}:${v.repairCount||0}次`).join('；') || '-' }}</div>
+      <div style="margin-top:6px"><b>平均维修时长最长Top</b>：{{ (deviceStats.longestAvgRepairDevices||[]).slice(0,3).map(v=>`${v.deviceCode||('设备'+v.deviceId)}:${Number(v.avgRepairHours||0).toFixed(1)}h`).join('；') || '-' }}</div>
+      <div style="margin-top:6px"><b>接近淘汰/更新周期</b>：{{ (deviceStats.nearRetireDevices||[]).slice(0,5).map(v=>v.deviceCode||('设备'+v.deviceId)).join('、') || '-' }}</div>
     </el-card>
 
     <el-button type="primary" @click="openAdd">新增维修记录</el-button>
