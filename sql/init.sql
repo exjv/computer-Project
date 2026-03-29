@@ -31,6 +31,8 @@ CREATE TABLE `role` (
   role_name VARCHAR(50) NOT NULL,
   role_status VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
   remark VARCHAR(255),
+  create_by BIGINT,
+  update_by BIGINT,
   create_time DATETIME NOT NULL,
   update_time DATETIME NOT NULL,
   UNIQUE KEY uk_role_code (role_code)
@@ -40,6 +42,7 @@ CREATE TABLE user_role (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   role_id BIGINT NOT NULL,
+  create_by BIGINT,
   create_time DATETIME NOT NULL,
   UNIQUE KEY uk_user_role (user_id, role_id),
   CONSTRAINT fk_user_role_user FOREIGN KEY (user_id) REFERENCES `user`(id),

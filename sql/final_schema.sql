@@ -53,6 +53,8 @@ CREATE TABLE role (
   role_status VARCHAR(20) DEFAULT 'ENABLED',
   role_desc VARCHAR(255),
   status TINYINT NOT NULL DEFAULT 1,
+  create_by BIGINT,
+  update_by BIGINT,
   create_time DATETIME,
   update_time DATETIME,
   UNIQUE KEY uk_role_code (role_code)
@@ -62,6 +64,7 @@ CREATE TABLE user_role (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   role_id BIGINT NOT NULL,
+  create_by BIGINT,
   create_time DATETIME,
   UNIQUE KEY uk_user_role (user_id, role_id),
   CONSTRAINT fk_user_role_user FOREIGN KEY (user_id) REFERENCES `user`(id),
