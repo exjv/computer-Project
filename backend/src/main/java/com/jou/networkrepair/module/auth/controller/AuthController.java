@@ -14,14 +14,14 @@ import com.jou.networkrepair.module.log.entity.LoginLog;
 import com.jou.networkrepair.module.log.entity.OperationLog;
 import com.jou.networkrepair.module.log.mapper.LoginLogMapper;
 import com.jou.networkrepair.module.log.mapper.OperationLogMapper;
+import com.jou.networkrepair.module.system.entity.SysRole;
+import com.jou.networkrepair.module.system.entity.ThirdPartyBind;
+import com.jou.networkrepair.module.system.entity.UserRole;
+import com.jou.networkrepair.module.system.mapper.SysRoleMapper;
+import com.jou.networkrepair.module.system.mapper.ThirdPartyBindMapper;
+import com.jou.networkrepair.module.system.mapper.UserRoleMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
-import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
-import com.jou.networkrepair.module.v2.auth2.mapper.ThirdPartyBindMapper;
-import com.jou.networkrepair.module.v2.rbac.entity.Role;
-import com.jou.networkrepair.module.v2.rbac.entity.UserRole;
-import com.jou.networkrepair.module.v2.rbac.mapper.RoleMapper;
-import com.jou.networkrepair.module.v2.rbac.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
@@ -46,7 +46,7 @@ public class AuthController {
     private final OperationLogMapper operationLogMapper;
     private final CaptchaService captchaService;
     private final UserRoleMapper userRoleMapper;
-    private final RoleMapper roleMapper;
+    private final SysRoleMapper roleMapper;
     private final RbacPermissionService rbacPermissionService;
     private final PermissionService permissionService;
     private final ThirdPartyBindMapper thirdPartyBindMapper;
@@ -268,8 +268,8 @@ public class AuthController {
         Set<Long> roleIds = userRoles.stream().map(UserRole::getRoleId).collect(Collectors.toSet());
         Set<String> roleCodes = new HashSet<>();
         if (!roleIds.isEmpty()) {
-            List<Role> roles = roleMapper.selectList(new LambdaQueryWrapper<Role>().in(Role::getId, roleIds));
-            roleCodes.addAll(roles.stream().map(Role::getRoleCode).map(rbacPermissionService::normalizeRole).collect(Collectors.toSet()));
+            List<SysRole> roles = roleMapper.selectList(new LambdaQueryWrapper<SysRole>().in(SysRole::getId, roleIds));
+            roleCodes.addAll(roles.stream().map(SysRole::getRoleCode).map(rbacPermissionService::normalizeRole).collect(Collectors.toSet()));
         }
         if (roleCodes.isEmpty() && user.getRole() != null && !user.getRole().trim().isEmpty()) {
             roleCodes.add(rbacPermissionService.normalizeRole(user.getRole()));

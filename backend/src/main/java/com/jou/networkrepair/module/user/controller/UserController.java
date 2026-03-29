@@ -6,14 +6,14 @@ import com.jou.networkrepair.common.constant.PermissionCode;
 import com.jou.networkrepair.common.api.ApiResult;
 import com.jou.networkrepair.common.constant.Loggable;
 import com.jou.networkrepair.common.exception.BusinessException;
+import com.jou.networkrepair.module.system.entity.SysRole;
+import com.jou.networkrepair.module.system.entity.ThirdPartyBind;
+import com.jou.networkrepair.module.system.entity.UserRole;
+import com.jou.networkrepair.module.system.mapper.SysRoleMapper;
+import com.jou.networkrepair.module.system.mapper.ThirdPartyBindMapper;
+import com.jou.networkrepair.module.system.mapper.UserRoleMapper;
 import com.jou.networkrepair.module.user.entity.SysUser;
 import com.jou.networkrepair.module.user.mapper.UserMapper;
-import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
-import com.jou.networkrepair.module.v2.auth2.mapper.ThirdPartyBindMapper;
-import com.jou.networkrepair.module.v2.rbac.entity.Role;
-import com.jou.networkrepair.module.v2.rbac.entity.UserRole;
-import com.jou.networkrepair.module.v2.rbac.mapper.RoleMapper;
-import com.jou.networkrepair.module.v2.rbac.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -39,7 +39,7 @@ public class UserController {
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
-    private final RoleMapper roleMapper;
+    private final SysRoleMapper roleMapper;
     private final UserRoleMapper userRoleMapper;
     private final ThirdPartyBindMapper thirdPartyBindMapper;
 
@@ -61,8 +61,8 @@ public class UserController {
     }
 
     @GetMapping("/roles")
-    public ApiResult<List<Role>> roleList() {
-        return ApiResult.success(roleMapper.selectList(new LambdaQueryWrapper<Role>().eq(Role::getStatus, 1).orderByAsc(Role::getId)));
+    public ApiResult<List<SysRole>> roleList() {
+        return ApiResult.success(roleMapper.selectList(new LambdaQueryWrapper<SysRole>().eq(SysRole::getStatus, 1).orderByAsc(SysRole::getId)));
     }
 
     @GetMapping("/page")
@@ -83,7 +83,7 @@ public class UserController {
                 .orderByDesc(SysUser::getId);
 
         if (role != null && !role.trim().isEmpty()) {
-            Role roleEntity = roleMapper.selectOne(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, role));
+            SysRole roleEntity = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, role));
             if (roleEntity == null) return ApiResult.success(new Page<>(current, size));
             List<UserRole> userRoles = userRoleMapper.selectList(new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, roleEntity.getId()));
             Set<Long> ids = userRoles.stream().map(UserRole::getUserId).collect(Collectors.toSet());
@@ -242,7 +242,7 @@ public class UserController {
     @GetMapping("/list-by-role")
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER')")
     public ApiResult<List<SysUser>> listByRole(@RequestParam String role) {
-        Role roleEntity = roleMapper.selectOne(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, role));
+        SysRole roleEntity = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, role));
         if (roleEntity == null) return ApiResult.success(Collections.emptyList());
         List<Long> userIds = userRoleMapper.selectList(new LambdaQueryWrapper<UserRole>().eq(UserRole::getRoleId, roleEntity.getId()))
                 .stream().map(UserRole::getUserId).collect(Collectors.toList());
@@ -251,12 +251,12 @@ public class UserController {
     }
 
     private void assignRoles(Long userId, List<String> roleCodes) {
-        List<Role> roles = roleMapper.selectList(new LambdaQueryWrapper<Role>().in(Role::getRoleCode, roleCodes).eq(Role::getStatus, 1));
+        List<SysRole> roles = roleMapper.selectList(new LambdaQueryWrapper<SysRole>().in(SysRole::getRoleCode, roleCodes).eq(SysRole::getStatus, 1));
         if (roles.size() != new HashSet<>(roleCodes).size()) {
             throw new BusinessException("存在不合法角色");
         }
         userRoleMapper.delete(new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
-        for (Role role : roles) {
+        for (SysRole role : roles) {
             UserRole ur = new UserRole();
             ur.setUserId(userId);
             ur.setRoleId(role.getId());
@@ -272,8 +272,8 @@ public class UserController {
         List<UserRole> userRoles = userRoleMapper.selectList(new LambdaQueryWrapper<UserRole>().in(UserRole::getUserId, userIds));
         if (!userRoles.isEmpty()) {
             Set<Long> roleIds = userRoles.stream().map(UserRole::getRoleId).collect(Collectors.toSet());
-            Map<Long, String> roleIdCodeMap = roleMapper.selectList(new LambdaQueryWrapper<Role>().in(Role::getId, roleIds))
-                    .stream().collect(Collectors.toMap(Role::getId, Role::getRoleCode));
+            Map<Long, String> roleIdCodeMap = roleMapper.selectList(new LambdaQueryWrapper<SysRole>().in(SysRole::getId, roleIds))
+                    .stream().collect(Collectors.toMap(SysRole::getId, SysRole::getRoleCode));
             for (UserRole ur : userRoles) {
                 roleMap.computeIfAbsent(ur.getUserId(), k -> new ArrayList<>()).add(roleIdCodeMap.get(ur.getRoleId()));
             }
@@ -361,7 +361,7 @@ public class UserController {
 
     private void checkRoleValid(String roleCode) {
         if (roleCode == null || roleCode.trim().isEmpty()) throw new BusinessException("角色不能为空");
-        Role role = roleMapper.selectOne(new LambdaQueryWrapper<Role>().eq(Role::getRoleCode, roleCode));
+        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleCode, roleCode));
         if (role == null) throw new BusinessException("角色不合法：" + roleCode);
     }
 
