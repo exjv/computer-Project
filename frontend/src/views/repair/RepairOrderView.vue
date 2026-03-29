@@ -26,6 +26,32 @@
       </el-form>
 
       <el-card shadow="never" style="margin-top:10px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span>统计维度：</span>
+          <el-select v-model="analyticsFilter.dimension" style="width:140px" @change="loadAnalytics">
+            <el-option label="日" value="day"/><el-option label="月" value="month"/><el-option label="半年" value="halfYear"/><el-option label="年" value="year"/><el-option label="自定义区间" value="custom"/>
+          </el-select>
+          <el-date-picker v-if="analyticsFilter.dimension==='custom'" v-model="analyticsFilter.range" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" @change="loadAnalytics"/>
+          <el-button @click="loadAnalytics">刷新统计</el-button>
+        </div>
+        <div class="kpi-row">
+          <el-tag>报修数量 {{ analytics.repairCount || 0 }}</el-tag>
+          <el-tag type="success">已完成 {{ analytics.completedCount || 0 }}</el-tag>
+          <el-tag type="warning">未完成 {{ analytics.uncompletedCount || 0 }}</el-tag>
+          <el-tag type="info">平均维修时长 {{ analytics.avgRepairHours || 0 }}h</el-tag>
+          <el-tag type="danger">延期占比 {{ analytics.delayRatio || 0 }}%</el-tag><el-button link type="danger" @click="jumpByAnalytics({ applyDelay: 1 })">点击查看延期工单</el-button>
+          <el-tag>配件占比 {{ analytics.partsRatio || 0 }}%</el-tag><el-button link @click="jumpByAnalytics({ needPurchaseParts: 1 })">点击查看配件工单</el-button>
+          <el-tag type="success">满意度均分 {{ analytics.satisfactionAvg || 0 }}</el-tag>
+        </div>
+        <div class="chart-grid">
+          <div ref="timelineRef" class="chart-box"></div>
+          <div ref="deviceTypeRef" class="chart-box"></div>
+          <div ref="maintainerRef" class="chart-box"></div>
+          <div ref="faultReasonRef" class="chart-box"></div>
+        </div>
+      </el-card>
+
+      <el-card shadow="never" style="margin-top:10px">
         <div>预测样本：{{ stats.predictionComparableCount || 0 }}，平均绝对误差：{{ stats.predictionAvgAbsErrorHours || 0 }}h，4h内命中：{{ stats.predictionWithin4hCount || 0 }}，24h内命中：{{ stats.predictionWithin24hCount || 0 }}</div>
         <div v-if="isAdmin" style="margin-top:8px">
           反馈总数：{{ stats.feedbackCount || 0 }}，满意度均分：{{ stats.satisfactionAvg || 0 }}，差评工单：{{ stats.lowScoreCount || 0 }}，未解决返修工单：{{ stats.unresolvedReworkCount || 0 }}
@@ -143,6 +169,7 @@ import { useRouter } from 'vue-router'
 import { delApi, getPage, postApi, putApi } from '../../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../../stores/user'
+import * as echarts from 'echarts'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -152,12 +179,18 @@ const isUser = computed(() => role.value === 'user')
 const isMaintainer = computed(() => role.value === 'maintainer')
 const canCreate = computed(() => isUser.value || isAdmin.value)
 
-const query = reactive({ orderNo: '', title: '', status: '', priority: '' })
+const query = reactive({ orderNo: '', title: '', status: '', priority: '', deviceType: '', faultType: '', assignMaintainerId: null, applyDelay: null, needPurchaseParts: null })
 const page = reactive({ current: 1, size: 10 })
 const list = ref([])
 const total = ref(0)
 const statusOptions = ref([])
 const stats = ref({})
+const analytics = ref({})
+const analyticsFilter = reactive({ dimension: 'month', range: [] })
+const timelineRef = ref()
+const deviceTypeRef = ref()
+const maintainerRef = ref()
+const faultReasonRef = ref()
 
 const devices = ref([])
 const maintainers = ref([])
@@ -181,8 +214,78 @@ const load = async () => {
   stats.value = await getPage('/repair-orders/statistics')
 }
 
+const loadAnalytics = async () => {
+  const params = { dimension: analyticsFilter.dimension }
+  if (analyticsFilter.dimension === 'custom' && analyticsFilter.range?.length === 2) {
+    params.startTime = analyticsFilter.range[0]
+    params.endTime = analyticsFilter.range[1]
+  }
+  analytics.value = await getPage('/repair-orders/analytics', params)
+  renderCharts()
+}
+
+const jumpByAnalytics = async (payload = {}) => {
+  Object.assign(query, { orderNo: '', title: '', status: '', priority: '', deviceType: '', faultType: '', assignMaintainerId: null, applyDelay: null, needPurchaseParts: null }, payload)
+  page.current = 1
+  await load()
+}
+
+const renderCharts = () => {
+  if (!timelineRef.value) return
+  const timelineChart = echarts.init(timelineRef.value)
+  const tl = analytics.value.timeline || {}
+  timelineChart.setOption({
+    title: { text: '报修趋势' },
+    tooltip: {},
+    xAxis: { type: 'category', data: Object.keys(tl) },
+    yAxis: { type: 'value' },
+    series: [{ type: 'line', data: Object.values(tl), smooth: true }]
+  })
+
+  const dtChart = echarts.init(deviceTypeRef.value)
+  const dtr = analytics.value.deviceTypeRank || []
+  dtChart.setOption({
+    title: { text: '各类设备报修排行（点击联动）' },
+    tooltip: {},
+    xAxis: { type: 'category', data: dtr.map(i => i.deviceType) },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: dtr.map(i => i.count) }]
+  })
+  dtChart.off('click')
+  dtChart.on('click', p => jumpByAnalytics({ deviceType: p.name }))
+
+  const mChart = echarts.init(maintainerRef.value)
+  const mts = analytics.value.maintainerStats || []
+  mChart.setOption({
+    title: { text: '维修人员工单数（点击联动）' },
+    tooltip: {},
+    xAxis: { type: 'category', data: mts.map(i => i.maintainerName || `#${i.maintainerId}`) },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: mts.map(i => i.orderCount) }]
+  })
+  mChart.off('click')
+  mChart.on('click', p => {
+    const t = mts[p.dataIndex]
+    if (t?.maintainerId) jumpByAnalytics({ assignMaintainerId: t.maintainerId })
+  })
+
+  const frChart = echarts.init(faultReasonRef.value)
+  const fr = analytics.value.faultReasonDist || {}
+  frChart.setOption({
+    title: { text: '故障原因分布（点击联动）' },
+    tooltip: {},
+    series: [{
+      type: 'pie',
+      radius: '60%',
+      data: Object.keys(fr).map(k => ({ name: k, value: fr[k] }))
+    }]
+  })
+  frChart.off('click')
+  frChart.on('click', p => jumpByAnalytics({ faultType: p.name }))
+}
+
 const reset = async () => {
-  Object.assign(query, { orderNo: '', title: '', status: '', priority: '' })
+  Object.assign(query, { orderNo: '', title: '', status: '', priority: '', deviceType: '', faultType: '', assignMaintainerId: null, applyDelay: null, needPurchaseParts: null })
   page.current = 1
   await load()
 }
@@ -261,9 +364,13 @@ onMounted(async () => {
   const userPage = await getPage('/users/page', { current: 1, size: 200 })
   maintainers.value = (userPage.records || []).filter(u => u.role === 'maintainer')
   await load()
+  await loadAnalytics()
 })
 </script>
 
 <style scoped>
 .header-row { display:flex; justify-content:space-between; align-items:center; }
+.kpi-row { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+.chart-grid { margin-top:12px; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+.chart-box { height:280px; border:1px solid #ebeef5; border-radius:4px; padding:4px; }
 </style>

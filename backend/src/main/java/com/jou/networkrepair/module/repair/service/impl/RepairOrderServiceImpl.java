@@ -62,7 +62,7 @@ public class RepairOrderServiceImpl implements RepairOrderService {
 
     @Override
     public Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority,
-                                  String deviceType, String faultType,
+                                  String deviceType, String faultType, Long assignMaintainerId, Integer applyDelay, Integer needPurchaseParts,
                                   LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd,
                                   String sortField, String sortOrder,
                                   Long userId, String role) {
@@ -73,6 +73,9 @@ public class RepairOrderServiceImpl implements RepairOrderService {
                 .eq(notBlank(priority), RepairOrder::getPriority, priority)
                 .like(notBlank(deviceType), RepairOrder::getDeviceType, deviceType)
                 .like(notBlank(faultType), RepairOrder::getFaultType, faultType)
+                .eq(assignMaintainerId != null, RepairOrder::getAssignMaintainerId, assignMaintainerId)
+                .eq(applyDelay != null, RepairOrder::getApplyDelay, applyDelay)
+                .eq(needPurchaseParts != null, RepairOrder::getNeedPurchaseParts, needPurchaseParts)
                 .ge(reportTimeStart != null, RepairOrder::getReportTime, reportTimeStart)
                 .le(reportTimeEnd != null, RepairOrder::getReportTime, reportTimeEnd);
 
@@ -802,6 +805,133 @@ public class RepairOrderServiceImpl implements RepairOrderService {
             map.put("unresolvedReworkCount", unresolved == null ? 0 : unresolved);
         }
         return map;
+    }
+
+    @Override
+    public Map<String, Object> analytics(String dimension, LocalDateTime startTime, LocalDateTime endTime, Long userId, String role) {
+        LocalDateTime[] range = resolveRange(dimension, startTime, endTime);
+        LocalDateTime start = range[0];
+        LocalDateTime end = range[1];
+        List<RepairOrder> orders = repairOrderMapper.selectList(scope(role, userId)
+                .ge(RepairOrder::getReportTime, start)
+                .le(RepairOrder::getReportTime, end)
+                .orderByDesc(RepairOrder::getReportTime));
+
+        long total = orders.size();
+        long completed = orders.stream().filter(o -> RepairOrderStatusEnum.COMPLETED.getLabel().equals(o.getStatus())
+                || RepairOrderStatusEnum.CLOSED.getLabel().equals(o.getStatus())).count();
+        long uncompleted = total - completed;
+        double avgHours = orders.stream()
+                .filter(o -> o.getStartRepairTime() != null && o.getFinishTime() != null && !o.getFinishTime().isBefore(o.getStartRepairTime()))
+                .mapToDouble(o -> java.time.Duration.between(o.getStartRepairTime(), o.getFinishTime()).toMinutes() / 60.0)
+                .average().orElse(0D);
+        long delayCount = orders.stream().filter(o -> o.getApplyDelay() != null && o.getApplyDelay() == 1).count();
+        long partsCount = orders.stream().filter(o -> o.getNeedPurchaseParts() != null && o.getNeedPurchaseParts() == 1).count();
+
+        Map<String, Long> byDeviceType = orders.stream()
+                .collect(Collectors.groupingBy(o -> notBlank(o.getDeviceType()) ? o.getDeviceType() : "未分类", Collectors.counting()));
+        List<Map<String, Object>> deviceTypeRank = byDeviceType.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .map(e -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("deviceType", e.getKey());
+                    m.put("count", e.getValue());
+                    return m;
+                }).collect(Collectors.toList());
+
+        Map<Long, Long> highFreqDevice = orders.stream()
+                .filter(o -> o.getDeviceId() != null)
+                .collect(Collectors.groupingBy(RepairOrder::getDeviceId, Collectors.counting()));
+        List<Map<String, Object>> highFreqDeviceRank = highFreqDevice.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .limit(15)
+                .map(e -> {
+                    NetworkDevice d = deviceMapper.selectById(e.getKey());
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("deviceId", e.getKey());
+                    m.put("deviceCode", d == null ? null : d.getDeviceCode());
+                    m.put("deviceName", d == null ? null : d.getDeviceName());
+                    m.put("count", e.getValue());
+                    return m;
+                }).collect(Collectors.toList());
+
+        Map<String, Long> reasonDist = orders.stream()
+                .collect(Collectors.groupingBy(o -> notBlank(o.getFaultType()) ? o.getFaultType() : "未填写", Collectors.counting()));
+
+        Map<Long, Long> maintainerCount = orders.stream()
+                .filter(o -> o.getAssignMaintainerId() != null)
+                .collect(Collectors.groupingBy(RepairOrder::getAssignMaintainerId, Collectors.counting()));
+        Map<Long, Double> maintainerAvg = orders.stream()
+                .filter(o -> o.getAssignMaintainerId() != null && o.getStartRepairTime() != null && o.getFinishTime() != null && !o.getFinishTime().isBefore(o.getStartRepairTime()))
+                .collect(Collectors.groupingBy(RepairOrder::getAssignMaintainerId,
+                        Collectors.averagingDouble(o -> java.time.Duration.between(o.getStartRepairTime(), o.getFinishTime()).toMinutes() / 60.0)));
+        List<Map<String, Object>> maintainerStats = maintainerCount.entrySet().stream()
+                .map(e -> {
+                    SysUser u = userMapper.selectById(e.getKey());
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("maintainerId", e.getKey());
+                    m.put("maintainerName", u == null ? null : u.getRealName());
+                    m.put("orderCount", e.getValue());
+                    m.put("avgHours", round(maintainerAvg.getOrDefault(e.getKey(), 0D)));
+                    return m;
+                }).sorted((a, b) -> Long.compare(((Number) b.get("orderCount")).longValue(), ((Number) a.get("orderCount")).longValue()))
+                .collect(Collectors.toList());
+
+        List<RepairFeedback> feedbacks = repairFeedbackMapper.selectList(new LambdaQueryWrapper<RepairFeedback>()
+                .ge(RepairFeedback::getConfirmTime, start)
+                .le(RepairFeedback::getConfirmTime, end)
+                .orderByDesc(RepairFeedback::getConfirmTime));
+        double satisfactionAvg = feedbacks.stream().filter(f -> f.getSatisfactionScore() != null)
+                .mapToInt(RepairFeedback::getSatisfactionScore).average().orElse(0D);
+
+        Map<String, Long> timeline = new java.util.LinkedHashMap<>();
+        java.time.LocalDate cursor = start.toLocalDate();
+        java.time.LocalDate endDate = end.toLocalDate();
+        java.time.format.DateTimeFormatter fmt = "day".equals(dimension) ? java.time.format.DateTimeFormatter.ofPattern("MM-dd")
+                : java.time.format.DateTimeFormatter.ofPattern("yyyy-MM");
+        while (!cursor.isAfter(endDate)) {
+            String key = cursor.format(fmt);
+            timeline.put(key, 0L);
+            cursor = "day".equals(dimension) ? cursor.plusDays(1) : cursor.plusMonths(1).withDayOfMonth(1);
+        }
+        for (RepairOrder order : orders) {
+            if (order.getReportTime() == null) continue;
+            String key = ("day".equals(dimension) ? order.getReportTime().toLocalDate().format(fmt)
+                    : order.getReportTime().toLocalDate().withDayOfMonth(1).format(fmt));
+            timeline.computeIfPresent(key, (k, v) -> v + 1);
+        }
+
+        Map<String, Object> map = new HashMap<>();
+        map.put("dimension", dimension);
+        map.put("startTime", start);
+        map.put("endTime", end);
+        map.put("repairCount", total);
+        map.put("completedCount", completed);
+        map.put("uncompletedCount", uncompleted);
+        map.put("avgRepairHours", round(avgHours));
+        map.put("deviceTypeRank", deviceTypeRank);
+        map.put("highFreqDeviceRank", highFreqDeviceRank);
+        map.put("faultReasonDist", reasonDist);
+        map.put("maintainerStats", maintainerStats);
+        map.put("satisfactionAvg", round(satisfactionAvg));
+        map.put("feedbackCount", feedbacks.size());
+        map.put("delayRatio", total == 0 ? 0D : round(delayCount * 100.0 / total));
+        map.put("partsRatio", total == 0 ? 0D : round(partsCount * 100.0 / total));
+        map.put("predictionComparableCount", orders.stream().filter(o -> o.getExpectedFinishTime() != null && o.getFinishTime() != null).count());
+        map.put("timeline", timeline);
+        return map;
+    }
+
+    private LocalDateTime[] resolveRange(String dimension, LocalDateTime startTime, LocalDateTime endTime) {
+        LocalDateTime now = LocalDateTime.now();
+        if ("custom".equals(dimension)) {
+            if (startTime == null || endTime == null) throw new BusinessException("自定义区间需传入开始/结束时间");
+            return new LocalDateTime[]{startTime, endTime};
+        }
+        if ("day".equals(dimension)) return new LocalDateTime[]{now.minusDays(29).withHour(0).withMinute(0).withSecond(0).withNano(0), now};
+        if ("halfYear".equals(dimension)) return new LocalDateTime[]{now.minusMonths(5).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0), now};
+        if ("year".equals(dimension)) return new LocalDateTime[]{now.minusYears(1), now};
+        return new LocalDateTime[]{now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0), now};
     }
 
     private RepairOrder requireOrder(Long id) {

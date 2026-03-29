@@ -20,7 +20,7 @@ import java.util.Map;
 
 public interface RepairOrderService {
     Page<RepairOrder> page(Long current, Long size, String status, String title, String orderNo, String priority,
-                           String deviceType, String faultType,
+                           String deviceType, String faultType, Long assignMaintainerId, Integer applyDelay, Integer needPurchaseParts,
                            LocalDateTime reportTimeStart, LocalDateTime reportTimeEnd,
                            String sortField, String sortOrder,
                            Long userId, String role);
@@ -70,4 +70,6 @@ public interface RepairOrderService {
     List<RepairOrderFlow> flows(Long id, Long userId, String role);
 
     Map<String, Object> stats(Long userId, String role);
+
+    Map<String, Object> analytics(String dimension, LocalDateTime startTime, LocalDateTime endTime, Long userId, String role);
 }

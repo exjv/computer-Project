@@ -60,12 +60,15 @@ public class RepairOrderController {
                                              @RequestParam(required = false) String priority,
                                              @RequestParam(required = false) String deviceType,
                                              @RequestParam(required = false) String faultType,
+                                             @RequestParam(required = false) Long assignMaintainerId,
+                                             @RequestParam(required = false) Integer applyDelay,
+                                             @RequestParam(required = false) Integer needPurchaseParts,
                                              @RequestParam(required = false) String reportTimeStart,
                                              @RequestParam(required = false) String reportTimeEnd,
                                              @RequestParam(required = false, defaultValue = "id") String sortField,
                                              @RequestParam(required = false, defaultValue = "desc") String sortOrder,
                                              HttpServletRequest request) {
-        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, deviceType, faultType,
+        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, deviceType, faultType, assignMaintainerId, applyDelay, needPurchaseParts,
                 parseDateTime(reportTimeStart), parseDateTime(reportTimeEnd), sortField, sortOrder,
                 (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
@@ -80,12 +83,15 @@ public class RepairOrderController {
                                            @RequestParam(required = false) String priority,
                                            @RequestParam(required = false) String deviceType,
                                            @RequestParam(required = false) String faultType,
+                                           @RequestParam(required = false) Long assignMaintainerId,
+                                           @RequestParam(required = false) Integer applyDelay,
+                                           @RequestParam(required = false) Integer needPurchaseParts,
                                            @RequestParam(required = false) String reportTimeStart,
                                            @RequestParam(required = false) String reportTimeEnd,
                                            @RequestParam(required = false, defaultValue = "id") String sortField,
                                            @RequestParam(required = false, defaultValue = "desc") String sortOrder,
                                            HttpServletRequest request) {
-        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, deviceType, faultType,
+        return ApiResult.success(repairOrderService.page(current, size, status, title, orderNo, priority, deviceType, faultType, assignMaintainerId, applyDelay, needPurchaseParts,
                 parseDateTime(reportTimeStart), parseDateTime(reportTimeEnd), sortField, sortOrder,
                 (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
@@ -291,6 +297,16 @@ public class RepairOrderController {
     @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
     public ApiResult<Map<String, Object>> stats(HttpServletRequest request) {
         return ApiResult.success(repairOrderService.stats((Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
+    }
+
+    @GetMapping("/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN','MAINTAINER','USER')")
+    public ApiResult<Map<String, Object>> analytics(@RequestParam(required = false, defaultValue = "month") String dimension,
+                                                    @RequestParam(required = false) String startTime,
+                                                    @RequestParam(required = false) String endTime,
+                                                    HttpServletRequest request) {
+        return ApiResult.success(repairOrderService.analytics(dimension, parseDateTime(startTime), parseDateTime(endTime),
+                (Long) request.getAttribute("userId"), (String) request.getAttribute("role")));
     }
 
     @GetMapping("/feedback/low-score")
