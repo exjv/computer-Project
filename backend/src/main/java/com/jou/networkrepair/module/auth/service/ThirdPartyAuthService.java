@@ -3,8 +3,8 @@ package com.jou.networkrepair.module.auth.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jou.networkrepair.common.exception.BusinessException;
 import com.jou.networkrepair.module.auth.dto.ThirdPartyBindDTO;
-import com.jou.networkrepair.module.v2.auth2.entity.ThirdPartyBind;
-import com.jou.networkrepair.module.v2.auth2.mapper.ThirdPartyBindMapper;
+import com.jou.networkrepair.module.system.entity.ThirdPartyBind;
+import com.jou.networkrepair.module.system.mapper.ThirdPartyBindMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
