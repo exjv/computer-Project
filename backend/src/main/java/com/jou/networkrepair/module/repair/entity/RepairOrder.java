@@ -77,9 +77,13 @@ public class RepairOrder {
     private String remark;
 
     /** 兼容历史字段 */
+    @TableField(exist = false)
     private String scenePhotoUrls;
+    @TableField(exist = false)
     private String handleDescription;
+    @TableField(exist = false)
     private String delayReason;
+    @TableField(exist = false)
     private String partsRequirement;
 
     @TableField("create_by")

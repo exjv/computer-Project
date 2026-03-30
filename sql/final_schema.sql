@@ -18,6 +18,8 @@ DROP TABLE IF EXISTS third_party_bind;
 DROP TABLE IF EXISTS dictionary;
 DROP TABLE IF EXISTS device;
 DROP TABLE IF EXISTS device_type;
+DROP TABLE IF EXISTS role_permission;
+DROP TABLE IF EXISTS permission;
 DROP TABLE IF EXISTS user_role;
 DROP TABLE IF EXISTS role;
 DROP TABLE IF EXISTS `user`;
@@ -52,6 +54,7 @@ CREATE TABLE role (
   role_name VARCHAR(100) NOT NULL,
   role_status VARCHAR(20) DEFAULT 'ENABLED',
   role_desc VARCHAR(255),
+  remark VARCHAR(255),
   status TINYINT NOT NULL DEFAULT 1,
   create_by BIGINT,
   update_by BIGINT,
@@ -69,6 +72,28 @@ CREATE TABLE user_role (
   UNIQUE KEY uk_user_role (user_id, role_id),
   CONSTRAINT fk_user_role_user FOREIGN KEY (user_id) REFERENCES `user`(id),
   CONSTRAINT fk_user_role_role FOREIGN KEY (role_id) REFERENCES role(id)
+);
+
+CREATE TABLE permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  permission_code VARCHAR(80) NOT NULL,
+  permission_name VARCHAR(100) NOT NULL,
+  permission_type VARCHAR(20) NOT NULL DEFAULT 'API',
+  status VARCHAR(20) NOT NULL DEFAULT 'ENABLED',
+  remark VARCHAR(255),
+  create_time DATETIME,
+  update_time DATETIME,
+  UNIQUE KEY uk_permission_code (permission_code)
+);
+
+CREATE TABLE role_permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  role_id BIGINT NOT NULL,
+  permission_id BIGINT NOT NULL,
+  create_time DATETIME,
+  UNIQUE KEY uk_role_permission (role_id, permission_id),
+  CONSTRAINT fk_role_permission_role FOREIGN KEY (role_id) REFERENCES role(id),
+  CONSTRAINT fk_role_permission_permission FOREIGN KEY (permission_id) REFERENCES permission(id)
 );
 
 CREATE TABLE device_type (

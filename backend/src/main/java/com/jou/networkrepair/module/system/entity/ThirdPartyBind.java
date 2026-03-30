@@ -1,5 +1,6 @@
 package com.jou.networkrepair.module.system.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
 public class ThirdPartyBind {
     private Long id;
     private Long userId;
+    @TableField(exist = false)
     private String userEmployeeNo;
 
     /** 兼容字段：provider -> platform */
@@ -20,10 +22,11 @@ public class ThirdPartyBind {
     private String unionId;
 
     /** 兼容字段：bindStatus -> status */
-    private String bindStatus;
+    private Integer bindStatus;
     private Integer status;
 
     private LocalDateTime bindTime;
+    @TableField(exist = false)
     private LocalDateTime unbindTime;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

@@ -29,6 +29,7 @@ export const ROUTE_ROLE_MAP = {
   '/my-repairs': [ROLE.USER],
   '/maintainer-orders': [ROLE.MAINTAINER],
   '/repair-records': [ROLE.ADMIN, ROLE.MAINTAINER],
+  '/notices': [ROLE.ADMIN],
   '/logs': [ROLE.ADMIN],
   '/profile': [ROLE.ADMIN, ROLE.MAINTAINER, ROLE.USER],
   '/': [ROLE.ADMIN, ROLE.MAINTAINER, ROLE.USER]
@@ -43,6 +44,7 @@ export const MENU_CONFIG = [
   { path: '/my-repairs', label: '我的报修', anyPerm: ['repair:order:view:self', 'repair:progress:track', 'repair:feedback:confirm'] },
   { path: '/maintainer-orders', label: '我的待处理工单', anyPerm: ['repair:order:view:self', 'repair:order:progress'] },
   { path: '/repair-records', label: '维修记录', anyPerm: ['repair:record:view', 'repair:record:write'] },
+  { path: '/notices', label: '公告管理', perm: 'notice:publish' },
   { path: '/logs', label: '日志管理', anyPerm: ['log:operation:view', 'log:business:view'] },
   { path: '/profile', label: '个人中心' }
 ]

@@ -42,6 +42,7 @@ public class NetworkDevice {
     private LocalDate enableDate;
 
     /** 统一使用 warrantyExpireDate 映射数据库字段 */
+    @TableField("warranty_expiry_date")
     private LocalDate warrantyExpireDate;
 
     /** 兼容历史代码中 getWarrantyExpiryDate() 调用 */
@@ -70,8 +71,11 @@ public class NetworkDevice {
     private Integer repairApprovalRequired;
     private String remark;
 
+    @TableField(exist = false)
     private String brandModel;
+    @TableField(exist = false)
     private String ipAddress;
+    @TableField(exist = false)
     private String macAddress;
 
     private LocalDateTime createTime;

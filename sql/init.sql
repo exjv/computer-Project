@@ -5,6 +5,7 @@ USE network_repair;
 -- ======================
 -- 基础组织模型
 -- ======================
+-- DEPRECATED: 历史初始化脚本（不再作为主线入口），请优先使用 sql/final_schema.sql
 CREATE TABLE `user` (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   employee_no VARCHAR(30) NOT NULL COMMENT '工号（全局唯一）',

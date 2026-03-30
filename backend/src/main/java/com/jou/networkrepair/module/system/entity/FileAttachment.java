@@ -1,5 +1,6 @@
 package com.jou.networkrepair.module.system.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
@@ -19,14 +20,19 @@ public class FileAttachment {
     private Long bizId;
 
     private String fileName;
+    @TableField(exist = false)
     private String originalFileName;
+    @TableField(exist = false)
     private String filePath;
     private String fileUrl;
     private String fileType;
+    @TableField(exist = false)
     private Long fileSize;
+    @TableField(exist = false)
     private String fileHash;
 
     private Long uploaderId;
+    @TableField(exist = false)
     private String uploaderEmployeeNo;
     private LocalDateTime uploadTime;
     private String remark;
